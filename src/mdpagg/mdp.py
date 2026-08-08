@@ -7,11 +7,11 @@ ROW_SUM_TOL = 1e-12
 @dataclass(frozen=True)
 class TabularMdp:
 
-    sa_begin: IndexArray  # |S| + 1
-    succ_begin: IndexArray  # |pairs| + 1
-    succ_state: IndexArray  # |nonzeros|
-    succ_prob: ValueArray  # |nonzeros|
-    cost: ValueArray  # |pairs|
+    sa_begin: IndexArray  
+    succ_begin: IndexArray 
+    succ_state: IndexArray  
+    succ_prob: ValueArray  
+    cost: ValueArray  
 
     @property
     def num_states(self) -> int:
@@ -52,6 +52,15 @@ def build(
         array.setflags(write=False)
 
     return TabularMdp(sa_begin, succ_begin, succ_state, succ_prob, cost)
+
+
+def unpack(
+    m: TabularMdp,
+) -> tuple[IndexArray, IndexArray, IndexArray, ValueArray, ValueArray]:
+    ## Numba cannot take the frozen dataclass, so this is the boundary between the
+    ## model and every jitted function:
+
+    return m.sa_begin, m.succ_begin, m.succ_state, m.succ_prob, m.cost
 
 
 def _state_of(sa_begin: IndexArray, pair: int) -> int:
