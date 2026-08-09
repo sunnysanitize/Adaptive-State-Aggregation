@@ -41,6 +41,10 @@ def allocate(num_states: int, max_groups: int) -> Partition:
     )
 
 
+def lift_into(part: Partition, w: ValueArray, v: ValueArray) -> None:
+    np.take(w, part.group_of, out=v)
+
+
 @numba.njit(inline="always")
 def _raw_bin(value, b1, eps, raw_bins):
 
