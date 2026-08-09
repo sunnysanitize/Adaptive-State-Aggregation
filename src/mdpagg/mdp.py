@@ -24,7 +24,7 @@ class TabularMdp:
     def num_actions(self, s: int) -> int:
         return int(self.sa_begin[s + 1] - self.sa_begin[s])
 
-    def pair_index(self, s: int, a: int) -> int:
+    def pair_index(slf, s: int, a: int) -> int:
         return int(self.sa_begin[s]) + a
 
     def successors(self, pair: int) -> IndexArray:
