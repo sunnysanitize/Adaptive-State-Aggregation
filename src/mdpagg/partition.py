@@ -5,8 +5,6 @@ import numpy as np
 
 from .types import INDEX, VALUE, IndexArray, ValueArray
 
-# A raw-bin array this large is 64 MB of int32. Past it, eps is a mistake
-# rather than a choice, and the allocation is what would fail first.
 MAX_RAW_BINS = 1 << 24
 
 
@@ -19,7 +17,7 @@ class Partition:
     centers: ValueArray
     num_groups: int = 0
     eps_effective: float = 0.0
-    groups_clamped: bool = False
+    clamped: bool = False
 
     @property
     def capacity(self) -> int:
@@ -45,10 +43,6 @@ def allocate(num_states: int, max_groups: int) -> Partition:
 
 @numba.njit(inline="always")
 def _raw_bin(value, b1, eps, raw_bins):
-    ## Half-open bins, [b1 + i*eps, b1 + (i+1)*eps), so v == b2 falls outside
-    ## every bin whenever eps divides the range evenly. The index clamps to the
-    ## last bin; see the ambiguity log. Distinct from `groups_clamped`, which
-    ## clamps K -- this one moves one state one bin and costs nothing.
 
     i = int((value - b1) / eps)
     if i >= raw_bins:
@@ -123,9 +117,6 @@ def rebin_by_value(
     if not (np.isfinite(b1) and np.isfinite(b2)):
         raise ValueError(f"v is not finite: min {b1!r}, max {b2!r}")
 
-    ## Not an edge case -- this is iteration 1 of every run, since V0 = 0.
-    ## The center is b1 itself rather than the b1 + eps/2 the formula would
-    ## give, so a constant V lifts back to itself. See the ambiguity log.
     if b1 == b2:
         out.group_of[:] = 0
         out.members[:] = np.arange(v.shape[0], dtype=INDEX)
@@ -134,7 +125,7 @@ def rebin_by_value(
         out.centers[0] = b1
         out.num_groups = 1
         out.eps_effective = eps
-        out.groups_clamped = False
+        out.clamped = False
         return
 
     raw_bins = int(np.ceil((b2 - b1) / eps))
@@ -144,13 +135,8 @@ def rebin_by_value(
             f"raw bins, above the {MAX_RAW_BINS} cap"
         )
 
-    ## Clamping K to max_groups means widening eps to whatever fits. That keeps
-    ## the |v[s] - center| <= eps guarantee true of the eps actually used, which
-    ## `eps_effective` reports; merging the overflow into a final group would
-    ## break it silently instead. Unlike the index clamp in `_raw_bin`, this one
-    ## changes the answer, which is why it is recorded.
-    groups_clamped = _count_groups(v, b1, eps, raw_bins) > max_groups
-    if groups_clamped:
+    clamped = _count_groups(v, b1, eps, raw_bins) > max_groups
+    if clamped:
         raw_bins = max_groups
         eps = (b2 - b1) / max_groups
 
@@ -158,4 +144,4 @@ def rebin_by_value(
         v, b1, eps, raw_bins, out.group_of, out.members, out.offset, out.centers
     )
     out.eps_effective = eps
-    out.groups_clamped = groups_clamped
+    out.clamped = clamped
