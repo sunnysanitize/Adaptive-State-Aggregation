@@ -1,5 +1,10 @@
 import numpy as np
 
+from .mdp import TabularMdp, build
+from .types import INDEX, VALUE
+
+GOAL = 0
+
 
 def _strides(dims: tuple[int, ...]) -> np.ndarray:
     strides = np.ones(len(dims), dtype=np.int64)
@@ -47,3 +52,57 @@ def _carve(dims: tuple[int, ...], seed: int) -> np.ndarray:
         stack.append(neighbour)
 
     return open_
+
+
+def _neighbours(dims: tuple[int, ...], cells: np.ndarray, dirs: np.ndarray) -> np.ndarray:
+    strides = _strides(dims)
+    axis, step = dirs >> 1, (dirs & 1) * 2 - 1
+    return cells + step * strides[axis]
+
+
+def make_standard_maze(
+    dims: tuple[int, ...], p: float, seed: int, goal_reward: float = 1.0
+) -> TabularMdp:
+    open_ = _carve(dims, seed)
+    num_states = open_.shape[0]
+
+    open_cell, open_dir = np.nonzero(open_)
+    degree = open_.sum(axis=1).astype(np.int64)
+    state_begin = np.concatenate(([0], np.cumsum(degree)))
+    neighbour = _neighbours(dims, open_cell, open_dir)
+
+    moving = open_cell != GOAL
+    pair_state = open_cell[moving]
+    pair_dir = open_dir[moving]
+    width = degree[pair_state]
+
+    num_actions = degree.copy()
+    num_actions[GOAL] = 1
+    sa_begin = np.concatenate(([0], np.cumsum(num_actions)))
+
+    succ_begin = np.concatenate(([0], np.cumsum(np.concatenate(([1], width)))))
+    total = int(width.sum())
+
+    local_start = np.concatenate(([0], np.cumsum(width)))[:-1]
+    offset = np.arange(total) - np.repeat(local_start, width)
+    source = np.repeat(state_begin[pair_state], width) + offset
+
+    succ_state = neighbour[source]
+    intended = np.repeat(pair_dir, width)
+    prob = (1.0 - p) / np.repeat(width, width)
+    prob[open_dir[source] == intended] += p
+
+    # Every move costs 1 except one landing on the goal, which pays a reward.
+    # The model carries c(s, a), so take the expectation over successors -- the
+    # Bellman operator only ever sees the expected immediate cost, so this is
+    # exact rather than an approximation.
+    reaching = np.add.reduceat(prob * (succ_state == GOAL), local_start)
+    cost = 1.0 - reaching * (1.0 + goal_reward)
+
+    return build(
+        sa_begin=sa_begin.astype(INDEX),
+        succ_begin=succ_begin.astype(INDEX),
+        succ_state=np.concatenate(([GOAL], succ_state)).astype(INDEX),
+        succ_prob=np.concatenate(([1.0], prob)).astype(VALUE),
+        cost=np.concatenate(([0.0], cost)).astype(VALUE),
+    )
