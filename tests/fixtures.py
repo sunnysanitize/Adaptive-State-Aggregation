@@ -124,4 +124,56 @@ def tiny_gridworld() -> Fixture:
     return Fixture("tiny_gridworld", mdp, 0.9, v_star)
 
 
+def make_random_mdp(
+    num_states: int,
+    max_actions: int = 3,
+    max_successors: int = 4,
+    seed: int = 0,
+) -> TabularMdp:
+    """A random valid MDP, for property tests only. **Never a benchmark.**
+
+    It exists to feed `test_contraction`, where the point is transition
+    structures nobody thought to hand-build. It lives here rather than in the
+    package so that `run.py` cannot import it by accident, because as a
+    benchmark it flatters the algorithm under test: costs and successors are
+    i.i.d., so V* values cluster narrowly, so eps-binning yields very few groups
+    and aggregation looks good for a reason that has nothing to do with the
+    method.
+
+    Every row is normalized before `build`, so a failure here is a bug in this
+    generator rather than the thing the test is hunting.
+    """
+    rng = np.random.default_rng(seed)
+
+    sa_begin = [0]
+    succ_begin = [0]
+    succ_state: list[int] = []
+    succ_prob: list[float] = []
+    cost: list[float] = []
+
+    width = min(max_successors, num_states)
+
+    for _ in range(num_states):
+        for _ in range(int(rng.integers(1, max_actions + 1))):
+            successors = rng.choice(
+                num_states, size=int(rng.integers(1, width + 1)), replace=False
+            )
+            p = rng.random(successors.size)
+            p /= p.sum()
+
+            succ_state.extend(np.sort(successors).tolist())
+            succ_prob.extend(p.tolist())
+            cost.append(float(rng.uniform(0.0, 1.0)))
+            succ_begin.append(len(succ_state))
+        sa_begin.append(len(cost))
+
+    return build(
+        sa_begin=np.array(sa_begin, dtype=INDEX),
+        succ_begin=np.array(succ_begin, dtype=INDEX),
+        succ_state=np.array(succ_state, dtype=INDEX),
+        succ_prob=np.array(succ_prob, dtype=VALUE),
+        cost=np.array(cost, dtype=VALUE),
+    )
+
+
 ALL_FIXTURES = (two_state_chain, tiny_gridworld)

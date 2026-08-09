@@ -32,6 +32,12 @@ def _sweep(sa_begin, succ_begin, succ_state, succ_prob, cost, v, out, group_of, 
         )[0]
 
 
+def bellman(mdp: TabularMdp, v: ValueArray, gamma: float) -> ValueArray:
+    out = np.empty_like(v)
+    _sweep(*unpack(mdp), v, out, _NO_GROUPS, gamma)
+    return out
+
+
 def value_iteration(
     mdp: TabularMdp,
     gamma: float,
