@@ -17,7 +17,7 @@ class Partition:
     centers: ValueArray
     num_groups: int = 0
     eps_effective: float = 0.0
-    clamped: bool = False
+    groups_clamped: bool = False
 
     @property
     def capacity(self) -> int:
@@ -125,7 +125,7 @@ def rebin_by_value(
         out.centers[0] = b1
         out.num_groups = 1
         out.eps_effective = eps
-        out.clamped = False
+        out.groups_clamped = False
         return
 
     raw_bins = int(np.ceil((b2 - b1) / eps))
@@ -135,8 +135,8 @@ def rebin_by_value(
             f"raw bins, above the {MAX_RAW_BINS} cap"
         )
 
-    clamped = _count_groups(v, b1, eps, raw_bins) > max_groups
-    if clamped:
+    groups_clamped = _count_groups(v, b1, eps, raw_bins) > max_groups
+    if groups_clamped:
         raw_bins = max_groups
         eps = (b2 - b1) / max_groups
 
@@ -144,4 +144,4 @@ def rebin_by_value(
         v, b1, eps, raw_bins, out.group_of, out.members, out.offset, out.centers
     )
     out.eps_effective = eps
-    out.clamped = clamped
+    out.groups_clamped = groups_clamped
