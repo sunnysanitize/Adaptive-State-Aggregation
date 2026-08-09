@@ -64,7 +64,6 @@ def make_standard_maze(
     dims: tuple[int, ...], p: float, seed: int, goal_reward: float = 1.0
 ) -> TabularMdp:
     open_ = _carve(dims, seed)
-    num_states = open_.shape[0]
 
     open_cell, open_dir = np.nonzero(open_)
     degree = open_.sum(axis=1).astype(np.int64)

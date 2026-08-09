@@ -10,7 +10,6 @@ from .norms import max_abs_diff
 from .timer import timed
 from .types import INDEX, VALUE, ValueArray
 
-
 _NO_GROUPS = np.empty(0, dtype=INDEX)
 
 
@@ -53,7 +52,9 @@ def value_iteration(
     max_abs_diff(v, nxt)
 
     with timed() as elapsed:
-        for iterations in range(1, max_iterations + 1):
+        # noqa B007: `iterations` is read after the loop, which the rule does
+        # not model -- taking its suggested rename would break the return.
+        for iterations in range(1, max_iterations + 1):  # noqa: B007
             _sweep(*arrays, v, nxt, _NO_GROUPS, gamma)
             counters.global_backups += mdp.num_states
 

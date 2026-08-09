@@ -3,7 +3,16 @@ PY ?= .venv/bin/python
 # debug`, and a silent `s` would hide which mode the claim is scoped to.
 PYTEST := $(PY) -m pytest -q -rs
 
-.PHONY: test debug bounds clean-cache
+.PHONY: all lint test debug bounds clean-cache
+
+# The Phase 1 gate (1.7). Lint first because it is the cheapest failure, then
+# the three run modes; `bounds` goes last because it wipes __pycache__ and so
+# pays for a full recompile.
+all: lint test debug bounds
+
+lint:
+	$(PY) -m ruff check .
+	$(PY) -m mypy
 
 # The three run modes. Numba's compilation errors are cryptic, so keeping
 # "the logic is wrong" and "it won't compile" as separable failures is worth
