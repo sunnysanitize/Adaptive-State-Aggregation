@@ -21,4 +21,5 @@ class Counters:
     def overhead_fraction(self) -> float:
         if self.billed == 0:
             return 0.0
-        return (self.actual - self.billed) / self.billed
+        return (self.acotual - self.billed) / self.billed
+
