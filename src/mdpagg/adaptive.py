@@ -1,5 +1,6 @@
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import numba
@@ -54,8 +55,8 @@ class AdaptiveState:
     part: Partition
     t_sa: int = 1
     residual_span: float = math.inf
+    wall_ns: int = 0
     counters: Counters = field(default_factory=Counters)
-
 
 EpsilonPolicy = Callable[[AdaptiveState], float]
 
@@ -91,6 +92,14 @@ class AdaptiveResult:
     wall_ns: int
 
 
+@contextmanager
+def _clocked(state: AdaptiveState) -> Iterator[None]:
+
+    with timed() as elapsed:
+        yield
+    state.wall_ns += elapsed.wall_ns
+
+
 @numba.njit
 def _aggregate_sweep(
     sa_begin,
@@ -108,6 +117,7 @@ def _aggregate_sweep(
     alpha,
     gamma,
 ):
+
     for j in range(num_groups):
         lo = offset[j]
         s = members[lo + int(draws[j] * (offset[j + 1] - lo))]
@@ -117,29 +127,123 @@ def _aggregate_sweep(
         out[j] = (1.0 - alpha) * w[j] + alpha * q
 
 
+def _aggregate_into(
+    arrays: ModelArrays,
+    part: Partition,
+    w: ValueArray,
+    out: ValueArray,
+    draws: ValueArray,
+    alpha: float,
+    gamma: float,
+) -> None:
+
+    _aggregate_sweep(
+        *arrays,
+        w,
+        out,
+        part.group_of,
+        part.members,
+        part.offset,
+        part.num_groups,
+        draws,
+        alpha,
+        gamma,
+    )
+
+
+# Warm up Numba-compiled kernels so JIT compilation cost is excluded from timed runs.
 def _warm(arrays: ModelArrays, num_states: int, gamma: float) -> None:
 
     v = np.zeros(num_states, dtype=VALUE)
     out = np.empty(num_states, dtype=VALUE)
     _sweep(*arrays, v, out, _NO_GROUPS, gamma)
+    span_seminorm(out - v)
 
     part = allocate(num_states, 1)
-    rebin_by_value(v, 1.0, 1, part)
+    spread = np.arange(num_states, dtype=VALUE)
+    rebin_by_value(spread, float(max(num_states, 1)), 1, part)
+
     w = np.zeros(1, dtype=VALUE)
     w_out = np.empty(1, dtype=VALUE)
-    _aggregate_sweep(
-        *arrays,
-        w,
-        w_out,
-        part.group_of,
-        part.members,
-        part.offset,
-        1,
-        np.zeros(1, dtype=VALUE),
-        1.0,
-        gamma,
-    )
+    _aggregate_into(arrays, part, w, w_out, np.zeros(1, dtype=VALUE), 1.0, gamma)
     lift_into(part, w, out)
+
+
+@dataclass
+class _AdaptiveLoop:
+
+    arrays: ModelArrays
+    num_states: int
+    gamma: float
+    schedule: AlternatingSchedule
+    epsilon: EpsilonPolicy
+    alpha: Callable[[int], float]
+    sampling_rng: np.random.Generator
+    max_groups: int
+    state: AdaptiveState
+    v_nxt: ValueArray
+    w_nxt: ValueArray
+
+    def step(self, t: int) -> Phase:
+
+        phase = self.schedule.phase_at(t)
+        entry = self.schedule.is_entry(t)
+
+        with _clocked(self.state):
+            if phase is Phase.GLOBAL:
+                if entry:
+                    self.lift()
+                self.global_sweep()
+            else:
+                if entry:
+                    self.rebin()
+                self.aggregate_sweep()
+
+        return phase
+
+    def lift(self) -> None:
+        state = self.state
+        if state.part.num_groups == 0:
+            return
+
+        lift_into(state.part, state.w, state.v)
+        state.counters.lift_ops += self.num_states
+
+    def global_sweep(self) -> None:
+
+        state = self.state
+
+        _sweep(*self.arrays, state.v, self.v_nxt, _NO_GROUPS, self.gamma)
+        state.counters.global_backups += self.num_states
+        state.residual_span = span_seminorm(self.v_nxt - state.v)
+        state.v, self.v_nxt = self.v_nxt, state.v
+
+    def rebin(self) -> None:
+        state = self.state
+
+        rebin_by_value(state.v, self.epsilon(state), self.max_groups, state.part)
+        state.counters.rebin_ops += self.num_states
+        groups = state.part.num_groups
+        state.w[:groups] = state.part.centers[:groups]
+
+    def aggregate_sweep(self) -> None:
+
+        state = self.state
+        groups = state.part.num_groups
+
+        _aggregate_into(
+            self.arrays,
+            state.part,
+            state.w,
+            self.w_nxt,
+            self.sampling_rng.random(groups),
+            self.alpha(state.t_sa),
+            self.gamma,
+        )
+
+        state.w[:groups] = self.w_nxt[:groups]
+        state.counters.aggregate_backups += groups
+        state.t_sa += 1
 
 
 def run_adaptive(
@@ -153,66 +257,38 @@ def run_adaptive(
     max_groups: int = 4096,
     observer: Callable[[int, Phase, AdaptiveState], None] | None = None,
 ) -> AdaptiveResult:
+
     arrays = unpack(mdp)
     state = AdaptiveState(
         v=np.zeros(mdp.num_states, dtype=VALUE),
         w=np.zeros(min(max_groups, mdp.num_states), dtype=VALUE),
         part=allocate(mdp.num_states, max_groups),
     )
-    v_nxt = np.empty_like(state.v)
-    w_nxt = np.empty_like(state.w)
+    loop = _AdaptiveLoop(
+        arrays=arrays,
+        num_states=mdp.num_states,
+        gamma=gamma,
+        schedule=schedule,
+        epsilon=epsilon,
+        alpha=alpha,
+        sampling_rng=sampling_rng,
+        max_groups=max_groups,
+        state=state,
+        v_nxt=np.empty_like(state.v),
+        w_nxt=np.empty_like(state.w),
+    )
 
     _warm(arrays, mdp.num_states, gamma)
 
-    with timed() as elapsed:
-        for t in range(iterations):
-            phase = schedule.phase_at(t)
+    for t in range(iterations):
+        phase = loop.step(t)
 
-            if phase is Phase.GLOBAL:
-                if schedule.is_entry(t) and state.part.num_groups > 0:
-                    lift_into(state.part, state.w, state.v)
-                    state.counters.lift_ops += mdp.num_states
+        if observer is not None:
+            observer(t, phase, state)
 
-                _sweep(*arrays, state.v, v_nxt, _NO_GROUPS, gamma)
-                state.counters.global_backups += mdp.num_states
-                state.residual_span = span_seminorm(v_nxt - state.v)
-                state.v, v_nxt = v_nxt, state.v
-            else:
-                if schedule.is_entry(t):
-                    rebin_by_value(state.v, epsilon(state), max_groups, state.part)
-                    state.counters.rebin_ops += mdp.num_states
-                    state.w[: state.part.num_groups] = state.part.centers[
-                        : state.part.num_groups
-                    ]
+    if iterations and schedule.phase_at(iterations - 1) is Phase.AGGREGATE:
+        with _clocked(state):
+            loop.lift()
 
-                groups = state.part.num_groups
-                _aggregate_sweep(
-                    *arrays,
-                    state.w,
-                    w_nxt,
-                    state.part.group_of,
-                    state.part.members,
-                    state.part.offset,
-                    groups,
-                    sampling_rng.random(groups),
-                    alpha(state.t_sa),
-                    gamma,
-                )
-                state.w[:groups] = w_nxt[:groups]
-                state.counters.aggregate_backups += groups
-                state.t_sa += 1
-
-            if observer is not None:
-                observer(t, phase, state)
-
-        if iterations and schedule.phase_at(iterations - 1) is Phase.AGGREGATE:
-            lift_into(state.part, state.w, state.v)
-            state.counters.lift_ops += mdp.num_states
-
-    return AdaptiveResult(
-        v=state.v,
-        iterations=iterations,
-        t_sa=state.t_sa,
-        counters=state.counters,
-        wall_ns=elapsed.wall_ns,
-    )
+    return AdaptiveResult(v=state.v, iterations=iterations, t_sa=state.t_sa,
+                          counters=state.counters, wall_ns=state.wall_ns)
