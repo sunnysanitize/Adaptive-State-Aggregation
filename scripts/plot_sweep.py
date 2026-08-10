@@ -36,7 +36,13 @@ THEME = {
 FONTS = ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"]
 
 
-def figure(summary: list[dict[str, Any]], rows: list[dict[str, Any]], mode: str) -> Any:
+def figure(
+    summary: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
+    mode: str,
+    dims: tuple[int, int],
+    gamma: float,
+) -> Any:
     c = THEME[mode]
     eps = [s["eps"] for s in summary]
     err = [s["err_mean"] for s in summary]
@@ -101,7 +107,10 @@ def figure(summary: list[dict[str, Any]], rows: list[dict[str, Any]], mode: str)
     ax.set_xlabel(r"aggregation width  $\varepsilon$", fontsize=10, color=c["ink2"])
     ax.set_ylabel(r"final $\ell_\infty$ error", fontsize=10, color=c["ink2"])
     ax.set_title(
-        "Error scales with $\\varepsilon$ — standard maze $200^2$, $\\gamma=0.95$",
+        (
+            "Error scales with $\\varepsilon$ — standard maze "
+            f"${dims[0]}\\times{dims[1]}$, $\\gamma={gamma:g}$"
+        ),
         fontsize=12,
         color=c["ink"],
         pad=14,
@@ -133,10 +142,14 @@ def main(argv: list[str] | None = None) -> int:
 
     plt.rcParams["font.family"] = FONTS
     data = json.loads(args.sweep.read_text())
+    problem = data["config"]["problem"]
+    dims = tuple(problem["dims"])
+    if len(dims) != 2:
+        raise ValueError("sweep plotting currently requires a two-dimensional maze")
     args.outdir.mkdir(parents=True, exist_ok=True)
 
     for mode in ("light", "dark"):
-        fig = figure(data["summary"], data["rows"], mode)
+        fig = figure(data["summary"], data["rows"], mode, dims, problem["gamma"])
         out = args.outdir / f"{args.sweep.stem}_{mode}.png"
         fig.savefig(out, facecolor=fig.get_facecolor())
         plt.close(fig)

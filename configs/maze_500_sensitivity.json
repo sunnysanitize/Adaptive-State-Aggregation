@@ -1,0 +1,17 @@
+{
+  "problem": {
+    "kind": "maze",
+    "dims": [500, 500],
+    "p": 0.92,
+    "seed": 0,
+    "gamma": 0.999
+  },
+  "algorithm": {
+    "iterations": 15000,
+    "epsilon": {"kind": "fixed", "value": 0.005},
+    "schedule": {"global_len": 2, "agg_len": 5},
+    "max_groups": 32768
+  },
+  "trace": {"fine_stride": 10, "coarse_stride": 500},
+  "master_seed": 0
+}

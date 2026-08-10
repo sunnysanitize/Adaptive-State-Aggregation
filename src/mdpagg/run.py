@@ -14,7 +14,6 @@ from .adaptive import (
     AlternatingSchedule,
     EpsilonPolicy,
     FixedEpsilon,
-    ResidualSpanEpsilon,
     run_adaptive,
 )
 from .config import EpsilonCfg, RunCfg, load
@@ -33,12 +32,7 @@ Observer = Callable[[int, Phase, AdaptiveState], None]
 
 
 def make_epsilon(cfg: EpsilonCfg) -> EpsilonPolicy:
-    if cfg.kind == "fixed":
-        return FixedEpsilon(cfg.value)
-    if cfg.kind == "residual_span":
-        return ResidualSpanEpsilon(cfg.c, cfg.eps_min)
-
-    raise ValueError(f"unrecognized epsilon kind {cfg.kind!r}")
+    return FixedEpsilon(cfg.value)
 
 
 def seeds_of(cfg: RunCfg) -> dict[str, Any]:
@@ -56,7 +50,11 @@ def loss_against(
 
 
 def observer_for(
-    cfg: RunCfg, mdp: TabularMdp, truth: GroundTruth, trace: Trace
+    cfg: RunCfg,
+    mdp: TabularMdp,
+    truth: GroundTruth,
+    trace: Trace,
+    trace_policy_loss: bool = True,
 ) -> Observer:
     lifted: ValueArray = np.empty(mdp.num_states, dtype=VALUE)
 
@@ -73,7 +71,7 @@ def observer_for(
         current = iterate(phase, state)
         loss = math.nan
 
-        if trace.wants_policy_loss(t):
+        if trace_policy_loss and trace.wants_policy_loss(t):
             loss = loss_against(cfg, mdp, current, truth)
 
         trace.record(
@@ -118,7 +116,11 @@ def summary_of(cfg: RunCfg, mdp: TabularMdp, truth: GroundTruth,
     }
 
 
-def execute(cfg: RunCfg, root: Path = CACHE_ROOT) -> dict[str, Any]:
+def execute(
+    cfg: RunCfg,
+    root: Path = CACHE_ROOT,
+    trace_policy_loss: bool = True,
+) -> dict[str, Any]:
 
     truth, mdp = load_ground_truth(cfg.problem, root)
 
@@ -126,7 +128,11 @@ def execute(cfg: RunCfg, root: Path = CACHE_ROOT) -> dict[str, Any]:
                                   fine_stride=cfg.trace.fine_stride,
                                   coarse_stride=cfg.trace.coarse_stride)
 
-    result = solve(cfg, mdp, observer_for(cfg, mdp, truth, trace))
+    result = solve(
+        cfg,
+        mdp,
+        observer_for(cfg, mdp, truth, trace, trace_policy_loss=trace_policy_loss),
+    )
 
     doc = trace_module.document(trace, cfg.model_dump(mode="json"),
                                 seeds_of(cfg), truth.hash, result.wall_ns)

@@ -71,18 +71,6 @@ class FixedEpsilon:
 
 
 @dataclass(frozen=True)
-class ResidualSpanEpsilon:
-
-    c: float
-    eps_min: float
-
-    def __call__(self, state: AdaptiveState) -> float:
-        if not math.isfinite(state.residual_span):
-            return self.eps_min
-        return max(self.eps_min, self.c * state.residual_span)
-
-
-@dataclass(frozen=True)
 class AdaptiveResult:
 
     v: ValueArray

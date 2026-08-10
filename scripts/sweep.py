@@ -72,7 +72,11 @@ def main(argv: list[str] | None = None) -> int:
         for seed in SEEDS:
             cfg = arm(base, eps, seed, args.vary)
             try:
-                doc = execute(cfg, args.root)
+                # The sweep consumes only final policy loss. Dense policy
+                # evaluation is observational work outside the solver timer,
+                # but interleaving it dominates process time and perturbs later
+                # timings through cache and thermal state.
+                doc = execute(cfg, args.root, trace_policy_loss=False)
             except FileNotFoundError as e:
                 print(e, file=sys.stderr)
                 return 1
