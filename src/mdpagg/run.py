@@ -14,6 +14,7 @@ from .adaptive import (
     AlternatingSchedule,
     EpsilonPolicy,
     FixedEpsilon,
+    ResidualSpanEpsilon,
     run_adaptive,
 )
 from .config import EpsilonCfg, RunCfg, load
@@ -32,7 +33,12 @@ Observer = Callable[[int, Phase, AdaptiveState], None]
 
 
 def make_epsilon(cfg: EpsilonCfg) -> EpsilonPolicy:
-    return FixedEpsilon(cfg.value)
+    if cfg.kind == "fixed":
+        return FixedEpsilon(cfg.value)
+    if cfg.kind == "residual_span":
+        return ResidualSpanEpsilon(cfg.c, cfg.eps_min)
+
+    raise ValueError(f"unrecognized epsilon kind {cfg.kind!r}")
 
 
 def seeds_of(cfg: RunCfg) -> dict[str, Any]:

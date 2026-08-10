@@ -1,7 +1,7 @@
 import hashlib
 import json
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -31,7 +31,16 @@ class FixedEpsilonCfg(Frozen):
     value: float = Field(gt=0.0)
 
 
-EpsilonCfg = FixedEpsilonCfg
+class ResidualSpanEpsilonCfg(Frozen):
+
+    kind: Literal["residual_span"] = "residual_span"
+    c: float = Field(gt=0.0)
+    eps_min: float = Field(gt=0.0)
+
+
+EpsilonCfg = Annotated[
+    FixedEpsilonCfg | ResidualSpanEpsilonCfg, Field(discriminator="kind")
+]
 
 
 class ScheduleCfg(Frozen):
