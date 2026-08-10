@@ -137,7 +137,10 @@ def execute(cfg: RunCfg, root: Path = CACHE_ROOT) -> dict[str, Any]:
 
 
 def default_output(cfg: RunCfg, config_path: Path) -> Path:
-    return RESULTS_ROOT / f"{config_path.stem}_seed{cfg.master_seed}.json"
+    return (
+        RESULTS_ROOT
+        / f"{config_path.stem}_p{cfg.problem.seed}_seed{cfg.master_seed}.json"
+    )
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -146,6 +149,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--root", type=Path, default=CACHE_ROOT)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--problem-seed", type=int, default=None)
     return parser.parse_args(argv)
 
 
@@ -166,6 +170,9 @@ def main(argv: list[str] | None = None) -> int:
     cfg: RunCfg = load(args.config)
     if args.seed is not None:
         cfg = cfg.model_copy(update={"master_seed": args.seed})
+    if args.problem_seed is not None:
+        problem = cfg.problem.model_copy(update={"seed": args.problem_seed})
+        cfg = cfg.model_copy(update={"problem": problem})
 
     try:
         doc = execute(cfg, args.root)

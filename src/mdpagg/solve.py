@@ -142,20 +142,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("config", type=Path)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--root", type=Path, default=CACHE_ROOT)
+    parser.add_argument("--problem-seed", type=int, default=None)
     args = parser.parse_args(argv)
 
     cfg: RunCfg = load(args.config)
-    path = cache_path(cfg.problem, args.root)
+    problem = cfg.problem
+    if args.problem_seed is not None:
+        problem = problem.model_copy(update={"seed": args.problem_seed})
+
+    path = cache_path(problem, args.root)
 
     if path.exists() and not args.force:
-        truth, _ = load_ground_truth(cfg.problem, args.root)
+        truth, _ = load_ground_truth(problem, args.root)
         print(f"cache hit  {path}")
         print(f"  |S| = {truth.v_star.shape[0]}  scale = {truth.scale:.6g}")
         print(f"  ||V*||inf = {float(max_norm(truth.v_star)):.10g}")
         return 0
 
-    truth, _ = solve(cfg.problem)
-    save(truth, cfg.problem, args.root)
+    truth, _ = solve(problem)
+    save(truth, problem, args.root)
 
     print(f"solved     {path}")
     print(f"  |S| = {truth.v_star.shape[0]}  scale = {truth.scale:.6g}")

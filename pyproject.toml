@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mdpagg"
 version = "0.1.0"
-description = "Adaptive state aggregation for average-cost MDPs (arXiv:2107.11053)"
+description = "Adaptive state aggregation for discounted MDPs (arXiv:2107.11053)"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
@@ -19,6 +19,11 @@ dev = [
     "hypothesis>=6",
     "ruff>=0.6",
     "mypy>=1.11",
+]
+# Figures only. Kept out of the core deps so a clean checkout can run `make all`
+# without it -- nothing under src/mdpagg imports matplotlib.
+plots = [
+    "matplotlib>=3.8",
 ]
 
 [tool.setuptools.packages.find]
