@@ -51,7 +51,15 @@ import itertools
 import numpy as np
 import pytest
 
-from mdpagg.inventory import NUM_ACTIONS, decode, encode, num_states, transitions
+from mdpagg.inventory import (
+    NUM_ACTIONS,
+    costs,
+    decode,
+    encode,
+    make_inventory_mdp,
+    num_states,
+    transitions,
+)
 from mdpagg.mdp import build
 from mdpagg.types import INDEX, VALUE
 
@@ -77,6 +85,19 @@ def _row(m, s: int, a: int, n: int) -> np.ndarray:
     row = np.zeros(n)
     np.add.at(row, m.successors(pair), m.probabilities(pair))
     return row
+
+
+LAM = 0.02
+
+# Half-spread captured per fill, per aggressiveness level. Decreasing, against
+# an increasing FILL: quoting tighter fills more often but earns less each time.
+# Without that, revenue rises monotonically in aggression, the immediate cost
+# gives it no downside, and the optimal policy collapses to "always maximally
+# aggressive" -- measured, not assumed, in the 5.3 parameter audit.
+SPREAD = np.array([1.0, 0.8, 0.5, 0.3, 0.15])
+
+SIGMA2 = np.array([[1.0, 0.5], [0.5, 1.0]])
+SIGMA3 = np.full((3, 3), 0.5) + np.eye(3) * 0.5
 
 
 def _mdp(num_assets: int, q_max: int):
@@ -179,3 +200,88 @@ def test_at_most_one_asset_fills_per_period():
         for a in range(NUM_ACTIONS):
             moved = inventories[m.successors(m.pair_index(s, a))] - inventories[s]
             assert (np.count_nonzero(moved, axis=1) <= 1).all(), (s, a)
+
+
+@pytest.mark.parametrize(
+    "inventory, expected",
+    [
+        # N=2, Q=2, lam=0.02, sigma=[[1,.5],[.5,1]], action 2 so f=0.4 and
+        # delta=0.5, giving 0.2 of spread revenue on a fully live state.
+        #
+        # (0,0)  interior. qSq = 0, so no penalty. All 4 fill branches are live,
+        #        so the full revenue is earned:  0 - 0.5*0.4*(4/4) = -0.2
+        # (2,2)  both assets pinned long. qSq = 4 + 4 + 2*(0.5*2*2) = 12,
+        #        penalty 0.02*12 = 0.24. Both bids are blocked, so 2 of 4
+        #        branches are live: 0.24 - 0.5*0.4*(2/4) = 0.24 - 0.1 = 0.14
+        # (2,-2) opposite signs. qSq = 4 + 4 + 2*(0.5*2*(-2)) = 4,
+        #        penalty 0.02*4 = 0.08. One bid and one ask blocked, so again
+        #        2 of 4 live: 0.08 - 0.1 = -0.02
+        ((0, 0), -0.2),
+        ((2, 2), 0.14),
+        ((2, -2), -0.02),
+    ],
+    ids=str,
+)
+def test_cost_matches_a_hand_computed_value(inventory, expected):
+    """The only external validation the formulation gets -- there is no
+    reference answer for the inventory MDP anywhere else in the project. The
+    arithmetic above is written out rather than recomputed so the check cannot
+    inherit the implementation's bug."""
+    c = costs(2, 2, FILL, LAM, SIGMA2, SPREAD)
+
+    assert c[_state(inventory, 2) * NUM_ACTIONS + 2] == pytest.approx(expected)
+
+
+def test_correlation_makes_aligned_inventory_more_expensive():
+    """Guards the requirement that sigma is genuinely non-diagonal. `(2,2)` and
+    `(2,-2)` have identical revenue and identical squared positions, so a
+    diagonal sigma scores them the same and the multi-asset framing collapses to
+    N independent one-asset problems. The gap is the off-diagonal term."""
+    c = costs(2, 2, FILL, LAM, SIGMA2, SPREAD)
+    aligned = c[_state((2, 2), 2) * NUM_ACTIONS + 2]
+    opposed = c[_state((2, -2), 2) * NUM_ACTIONS + 2]
+
+    assert aligned > opposed
+    assert aligned - opposed == pytest.approx(LAM * 4 * SIGMA2[0, 1] * 2 * 2)
+
+
+def test_a_pinned_asset_earns_no_spread_on_the_blocked_side():
+    """Revenue counts live branches only. At `q = +Q` the bid cannot fill --
+    the position limit means the quote is pulled -- so charging spread for it
+    would pay the book for a trade that never happened. The transition already
+    treats that branch as no-fill; this keeps the cost consistent with it."""
+    c = costs(1, 2, FILL, LAM, np.array([[1.0]]), SPREAD)
+    a, f = 2, FILL[2]
+
+    flat = c[_state((0,), 2) * NUM_ACTIONS + a]
+    pinned = c[_state((2,), 2) * NUM_ACTIONS + a]
+
+    assert flat == pytest.approx(-SPREAD[a] * f)
+    assert pinned == pytest.approx(LAM * 4 - SPREAD[a] * f / 2)
+
+
+def test_the_spread_ladder_leaves_revenue_hump_shaped():
+    """Expected revenue per period is `delta_a * f_a`. If that is monotone in
+    `a` the immediate cost gives aggression no downside and exact VI collapses
+    to a single-action policy -- measured at the 5.3 audit, where a flat ladder
+    produced `acts = 1` at every lambda and gamma tried. An interior optimum is
+    what makes the action choice a real trade-off, so it is a requirement on the
+    frozen constants rather than an accident of them."""
+    revenue = SPREAD * FILL
+
+    assert revenue.argmax() not in (0, NUM_ACTIONS - 1)
+    assert (np.diff(SPREAD) < 0).all(), "tighter quotes must capture less"
+    assert (np.diff(FILL) > 0).all(), "tighter quotes must fill more often"
+
+
+def test_the_study_instance_assembles_at_the_full_size():
+    """N=3, Q=10 -- the instance every Project II number is measured on. The
+    assertion that matters is not the shapes but that `build()` accepts it at
+    all: it re-checks row sums, dtypes and index ranges across all 46,305 pairs,
+    which is where a clipping or dtype regression at scale would surface."""
+    m = make_inventory_mdp(3, 10, FILL, LAM, SIGMA3, SPREAD)
+
+    assert m.num_states == 9261
+    assert m.num_pairs == 9261 * NUM_ACTIONS
+    assert m.succ_state.size == 9261 * NUM_ACTIONS * 7
+    assert m.cost.dtype == VALUE
