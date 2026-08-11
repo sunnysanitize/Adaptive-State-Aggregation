@@ -45,6 +45,18 @@ def lift_into(part: Partition, w: ValueArray, v: ValueArray) -> None:
     np.take(w, part.group_of, out=v)
 
 
+# A gather, one independent write per state. No arithmetic, so the threaded
+# form is exact by construction rather than by luck.
+@numba.njit(parallel=True)
+def _gather(w, group_of, v):
+    for s in numba.prange(v.shape[0]):
+        v[s] = w[group_of[s]]
+
+
+def lift_into_parallel(part: Partition, w: ValueArray, v: ValueArray) -> None:
+    _gather(w, part.group_of, v)
+
+
 @numba.njit(inline="always")
 def _raw_bin(value, b1, eps, raw_bins):
 

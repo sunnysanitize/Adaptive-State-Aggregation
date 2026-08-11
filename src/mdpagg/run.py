@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import numba
 import numpy as np
 
 from . import trace as trace_module
@@ -99,7 +100,21 @@ def solve(cfg: RunCfg, mdp: TabularMdp, observer: Observer) -> AdaptiveResult:
     return run_adaptive(mdp, cfg.problem.gamma, cfg.algorithm.iterations,
                         schedule, make_epsilon(cfg.algorithm.epsilon),
                         streams(cfg.master_seed).sampling,
-                        max_groups=cfg.algorithm.max_groups, observer=observer)
+                        max_groups=cfg.algorithm.max_groups, observer=observer,
+                        parallel=cfg.execution.parallel,
+                        threads=cfg.execution.threads)
+
+
+# Requested and observed both, because they can differ: Numba clamps a request
+# above its configured maximum, and a run that quietly got fewer threads than
+# it asked for would otherwise look like poor scaling.
+def execution_of(result: AdaptiveResult) -> dict[str, Any]:
+    return {
+        "parallel": result.parallel,
+        "threads_requested": result.threads_requested,
+        "threads_observed": result.threads_observed,
+        "threading_layer": str(numba.threading_layer()) if result.parallel else None,
+    }
 
 
 def summary_of(cfg: RunCfg, mdp: TabularMdp, truth: GroundTruth,
@@ -138,6 +153,7 @@ def execute(
                                 seeds_of(cfg), truth.hash, result.wall_ns)
 
     doc["final"] = summary_of(cfg, mdp, truth, trace, result)
+    doc["execution"] = execution_of(result)
 
     return doc
 
@@ -156,12 +172,21 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--root", type=Path, default=CACHE_ROOT)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--problem-seed", type=int, default=None)
+    parser.add_argument("--parallel", action="store_true")
+    parser.add_argument("--threads", type=int, default=None)
     return parser.parse_args(argv)
 
 
 def report(out: Path, doc: dict[str, Any]) -> None:
     final = doc["final"]
+    execution = doc["execution"]
     print(f"wrote      {out}")
+    if execution["parallel"]:
+        print(
+            f"  threads      {execution['threads_observed']} observed"
+            f"  (requested {execution['threads_requested']},"
+            f" layer {execution['threading_layer']})"
+        )
     print(f"  err_inf      {final['err_inf']:.6g}")
     print(f"  policy_loss  {final['policy_loss']:.6g}")
     print(f"  K (max)      {final['num_groups']}")
@@ -179,6 +204,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.problem_seed is not None:
         problem = cfg.problem.model_copy(update={"seed": args.problem_seed})
         cfg = cfg.model_copy(update={"problem": problem})
+    if args.parallel or args.threads is not None:
+        execution = cfg.execution.model_copy(update={
+            "parallel": args.parallel or cfg.execution.parallel,
+            "threads": args.threads if args.threads is not None else cfg.execution.threads,
+        })
+        cfg = cfg.model_copy(update={"execution": execution})
 
     try:
         doc = execute(cfg, args.root)

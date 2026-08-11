@@ -7,6 +7,7 @@ from mdpagg import run as run_module
 from mdpagg.adaptive import AdaptiveState
 from mdpagg.config import (
     AlgorithmCfg,
+    ExecutionCfg,
     FixedEpsilonCfg,
     MazeProblem,
     RunCfg,
@@ -44,6 +45,46 @@ def run_fixture():
         part=allocate_partition(fixture.mdp.num_states, 1),
     )
     return fixture, cfg, truth, state
+
+
+def test_execution_settings_reach_the_solver():
+    """A timing run whose thread count came from the environment is unreadable.
+
+    The result file has to say what was asked for, or a sweep over thread
+    counts cannot be told apart from five runs at the machine default.
+    """
+    fixture, cfg, _truth, _state = run_fixture()
+    cfg = cfg.model_copy(
+        update={"execution": ExecutionCfg(parallel=True, threads=2)}
+    )
+
+    result = run_module.solve(cfg, fixture.mdp, observer=None)
+
+    assert result.parallel is True
+    assert result.threads_requested == 2
+
+
+def test_run_document_records_what_the_solver_was_asked_for():
+    fixture, cfg, _truth, _state = run_fixture()
+    cfg = cfg.model_copy(
+        update={"execution": ExecutionCfg(parallel=True, threads=2)}
+    )
+
+    result = run_module.solve(cfg, fixture.mdp, observer=None)
+    block = run_module.execution_of(result)
+
+    assert block["parallel"] is True
+    assert block["threads_requested"] == 2
+    assert block["threads_observed"] == 2
+    assert block["threading_layer"] is not None
+
+
+def test_execution_defaults_to_serial():
+    """The reproduction must stay runnable without any parallel transform."""
+    _fixture, cfg, _truth, _state = run_fixture()
+
+    assert cfg.execution.parallel is False
+    assert cfg.execution.threads is None
 
 
 def test_observer_can_skip_intermediate_policy_evaluation(monkeypatch):

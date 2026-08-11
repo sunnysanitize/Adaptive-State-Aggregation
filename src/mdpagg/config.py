@@ -48,6 +48,16 @@ class AlgorithmCfg(Frozen):
     max_groups: int = Field(default=4096, ge=1)
 
 
+# Execution, not algorithm: threading changes how fast the answer arrives, not
+# what it is -- Gate 4 holds the two bitwise equal. Keeping it out of
+# AlgorithmCfg also keeps it out of `problem_hash`, so switching threads on
+# cannot invalidate a cached V*.
+class ExecutionCfg(Frozen):
+
+    parallel: bool = False
+    threads: int | None = Field(default=None, ge=1)
+
+
 class TraceCfg(Frozen):
 
     fine_stride: int = Field(default=1, ge=1)
@@ -59,6 +69,7 @@ class RunCfg(Frozen):
     problem: ProblemCfg
     algorithm: AlgorithmCfg
     trace: TraceCfg = TraceCfg()
+    execution: ExecutionCfg = ExecutionCfg()
     master_seed: int = 0
 
 

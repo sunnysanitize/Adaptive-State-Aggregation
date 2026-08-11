@@ -11,12 +11,20 @@ from .backup import backup_lifted
 from .counters import Counters, PhaseTimes
 from .mdp import TabularMdp, unpack
 from .norms import span_seminorm
-from .partition import Partition, allocate, lift_into, rebin_by_value
+from .partition import Partition, allocate, lift_into, lift_into_parallel, rebin_by_value
 from .timer import timed
 from .types import VALUE, IndexArray, Phase, ValueArray
-from .vi import _NO_GROUPS, _sweep
+from .vi import _NO_GROUPS, _sweep, _sweep_parallel
 
 ModelArrays = tuple[IndexArray, IndexArray, IndexArray, ValueArray, ValueArray]
+
+# Measured by scripts/aggregate_grain.py on this machine: threading the
+# aggregate sweep loses below this many groups and wins above it. Both
+# preregistered arms sit under it -- K is about 61 at gamma = 0.95 and 4156 at
+# gamma = 0.999 -- so a threaded run still calls the serial aggregate kernel
+# there. Choosing it by measurement is what keeps the comparison fair; forcing
+# the threaded kernel at K = 61 would hand aggregation a 50x slower loop.
+AGGREGATE_PARALLEL_MIN_GROUPS = 8192
 
 
 def inverse_sqrt(t: int) -> float:
@@ -81,6 +89,9 @@ class AdaptiveResult:
     counters: Counters
     wall_ns: int
     phase_times: PhaseTimes | None = None
+    parallel: bool = False
+    threads_requested: int | None = None
+    threads_observed: int = 1
 
 
 @contextmanager
@@ -144,9 +155,10 @@ def _aggregate_into(
     draws: ValueArray,
     alpha: float,
     gamma: float,
+    kernel=_aggregate_sweep,
 ) -> None:
 
-    _aggregate_sweep(
+    kernel(
         *arrays,
         w,
         out,
@@ -160,8 +172,10 @@ def _aggregate_into(
     )
 
 
-# Warm up Numba-compiled kernels so JIT compilation cost is excluded from timed runs.
-def _warm(arrays: ModelArrays, num_states: int, gamma: float) -> None:
+# Warm up Numba-compiled kernels so JIT compilation cost is excluded from timed
+# runs. A threaded run warms both forms: whichever the crossover selects, the
+# compile must not land inside the timer.
+def _warm(arrays: ModelArrays, num_states: int, gamma: float, parallel: bool = False) -> None:
 
     v = np.zeros(num_states, dtype=VALUE)
     out = np.empty(num_states, dtype=VALUE)
@@ -176,6 +190,14 @@ def _warm(arrays: ModelArrays, num_states: int, gamma: float) -> None:
     w_out = np.empty(1, dtype=VALUE)
     _aggregate_into(arrays, part, w, w_out, np.zeros(1, dtype=VALUE), 1.0, gamma)
     lift_into(part, w, out)
+
+    if parallel:
+        _sweep_parallel(*arrays, v, out, _NO_GROUPS, gamma)
+        _aggregate_into(
+            arrays, part, w, w_out, np.zeros(1, dtype=VALUE), 1.0, gamma,
+            kernel=_aggregate_sweep_parallel,
+        )
+        lift_into_parallel(part, w, out)
 
 
 @dataclass
@@ -192,6 +214,7 @@ class _AdaptiveLoop:
     state: AdaptiveState
     v_nxt: ValueArray
     w_nxt: ValueArray
+    parallel: bool = False
 
     def step(self, t: int) -> Phase:
 
@@ -229,14 +252,18 @@ class _AdaptiveLoop:
         if state.part.num_groups == 0:
             return
 
-        lift_into(state.part, state.w, state.v)
+        if self.parallel:
+            lift_into_parallel(state.part, state.w, state.v)
+        else:
+            lift_into(state.part, state.w, state.v)
         state.counters.lift_ops += self.num_states
 
     def global_sweep(self) -> None:
 
         state = self.state
+        sweep = _sweep_parallel if self.parallel else _sweep
 
-        _sweep(*self.arrays, state.v, self.v_nxt, _NO_GROUPS, self.gamma)
+        sweep(*self.arrays, state.v, self.v_nxt, _NO_GROUPS, self.gamma)
         state.counters.global_backups += self.num_states
         state.residual_span = span_seminorm(self.v_nxt - state.v)
         state.v, self.v_nxt = self.v_nxt, state.v
@@ -253,6 +280,7 @@ class _AdaptiveLoop:
 
         state = self.state
         groups = state.part.num_groups
+        threaded = self.parallel and groups >= AGGREGATE_PARALLEL_MIN_GROUPS
 
         _aggregate_into(
             self.arrays,
@@ -262,6 +290,7 @@ class _AdaptiveLoop:
             self.sampling_rng.random(groups),
             self.alpha(state.t_sa),
             self.gamma,
+            kernel=_aggregate_sweep_parallel if threaded else _aggregate_sweep,
         )
 
         state.w[:groups] = self.w_nxt[:groups]
@@ -280,7 +309,15 @@ def run_adaptive(
     max_groups: int = 4096,
     observer: Callable[[int, Phase, AdaptiveState], None] | None = None,
     phase_timing: bool = False,
+    parallel: bool = False,
+    threads: int | None = None,
 ) -> AdaptiveResult:
+
+    # Set deliberately rather than inherited: a run that silently picked up an
+    # ambient machine default would be indistinguishable in the result file
+    # from one that asked for that number.
+    if threads is not None:
+        numba.set_num_threads(threads)
 
     arrays = unpack(mdp)
     state = AdaptiveState(
@@ -301,9 +338,10 @@ def run_adaptive(
         state=state,
         v_nxt=np.empty_like(state.v),
         w_nxt=np.empty_like(state.w),
+        parallel=parallel,
     )
 
-    _warm(arrays, mdp.num_states, gamma)
+    _warm(arrays, mdp.num_states, gamma, parallel=parallel)
 
     for t in range(iterations):
         phase = loop.step(t)
@@ -317,4 +355,6 @@ def run_adaptive(
 
     return AdaptiveResult(v=state.v, iterations=iterations, t_sa=state.t_sa,
                           counters=state.counters, wall_ns=state.wall_ns,
-                          phase_times=state.phase_times)
+                          phase_times=state.phase_times, parallel=parallel,
+                          threads_requested=threads,
+                          threads_observed=numba.get_num_threads() if parallel else 1)

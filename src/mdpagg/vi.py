@@ -22,13 +22,25 @@ class VIResult:
     wall_ns: int
 
 
-@numba.njit
-def _sweep(sa_begin, succ_begin, succ_state, succ_prob, cost, v, out, group_of, gamma):
+# One source, compiled twice: `numba.prange` is `range` when parallel=False, so
+# the two forms cannot drift. Every state writes its own `out[s]` and reads only
+# `v`, so splitting the loop changes no state's arithmetic -- which is what lets
+# Gate 4 demand exact equality rather than a tolerance.
+def make_sweep(parallel):
 
-    for s in range(out.shape[0]):
-        out[s] = backup_direct(
-            sa_begin, succ_begin, succ_state, succ_prob, cost, s, v, group_of, gamma
-        )[0]
+    @numba.njit(parallel=parallel)
+    def sweep(sa_begin, succ_begin, succ_state, succ_prob, cost, v, out, group_of, gamma):
+
+        for s in numba.prange(out.shape[0]):
+            out[s] = backup_direct(
+                sa_begin, succ_begin, succ_state, succ_prob, cost, s, v, group_of, gamma
+            )[0]
+
+    return sweep
+
+
+_sweep = make_sweep(False)
+_sweep_parallel = make_sweep(True)
 
 
 def bellman(mdp: TabularMdp, v: ValueArray, gamma: float) -> ValueArray:
@@ -42,20 +54,22 @@ def value_iteration(
     gamma: float,
     tol: float = 1e-10,
     max_iterations: int = 100_000,
+    parallel: bool = False,
 ) -> VIResult:
     arrays = unpack(mdp)
+    sweep = _sweep_parallel if parallel else _sweep
     v = np.zeros(mdp.num_states, dtype=VALUE)
     nxt = np.empty_like(v)
     counters = Counters()
 
-    _sweep(*arrays, v, nxt, _NO_GROUPS, gamma)
+    sweep(*arrays, v, nxt, _NO_GROUPS, gamma)
     max_abs_diff(v, nxt)
 
     with timed() as elapsed:
         # noqa B007: `iterations` is read after the loop, which the rule does
         # not model -- taking its suggested rename would break the return.
         for iterations in range(1, max_iterations + 1):  # noqa: B007
-            _sweep(*arrays, v, nxt, _NO_GROUPS, gamma)
+            sweep(*arrays, v, nxt, _NO_GROUPS, gamma)
             counters.global_backups += mdp.num_states
 
             delta = max_abs_diff(nxt, v)
