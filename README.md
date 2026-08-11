@@ -19,7 +19,7 @@ Full report: [`docs/parallel_note.md`](docs/parallel_note.md). What was
 predicted before any of it was measured, written and dated in advance:
 [`docs/predictions.md`](docs/predictions.md).
 
-## Headline result
+## Result
 
 Time to `err_inf ≤ 2.0`, each solver at its own best thread count, 20 paired
 maze instances at `γ = 0.95` and 5 at `γ = 0.999`. Intervals are percentile
@@ -103,7 +103,3 @@ Apple M4 Pro, one threading layer, and the fixed-`ε` aggregation algorithm as
 implemented here. The memory-bandwidth explanation is inferred from scaling
 behaviour rather than read from hardware counters. `docs/parallel_note.md`
 records the limitations in full, including what was planned and not measured.
-
-The benchmark reproduces [Chen et al. (2021)](https://arxiv.org/abs/2107.11053);
-[`docs/reproduction_note.md`](docs/reproduction_note.md) covers what reproduced,
-what did not, and why.
