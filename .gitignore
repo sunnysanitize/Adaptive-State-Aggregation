@@ -44,4 +44,8 @@ Sessionx.vim
 .vscode/
 .idea/
 
-/docs/
+# Working notes stay untracked until their implementation is finished.
+# predictions.md is the exception: it is only worth anything if it can be shown
+# to predate the measurements, and an untracked file shows no such thing.
+/docs/*
+!/docs/predictions.md
