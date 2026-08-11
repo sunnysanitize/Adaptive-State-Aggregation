@@ -49,3 +49,4 @@ Sessionx.vim
 # to predate the measurements, and an untracked file shows no such thing.
 /docs/*
 !/docs/predictions.md
+!/docs/parallel_note.md
