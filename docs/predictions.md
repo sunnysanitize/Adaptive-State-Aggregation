@@ -1,8 +1,17 @@
 # What this study will measure, and what would prove it wrong
 
-**Written `2026-08-10`, before any parallel code existed in this branch.**
-`grep -rn prange src/` returns nothing today. That is the point: these choices
-are only worth something if they were fixed before the first measurement.
+**Written `2026-08-10`, before any parallel code existed in this branch, and
+before any solver had been timed on more than one thread.** These choices are
+only worth something if they were fixed before the measurements they judge.
+
+Two things were measured on one thread after this was first written, and both
+are marked with their date where they appear: the phase split in section 3, and
+a microbenchmark of the aggregate kernel on its own. The kernel benchmark added
+the first threaded code to the tree, so `grep -rn prange src/` no longer comes
+back empty — it did when the sections below were written. Neither measurement
+timed an end-to-end solve on more than one thread, which is what every endpoint
+here is about, and no target, threshold or refutation condition below has been
+changed since it was written.
 
 
 ## 1 The question
