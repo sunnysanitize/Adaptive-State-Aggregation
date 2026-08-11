@@ -361,6 +361,15 @@ anything with substantially different memory bandwidth per core.
 **Seed counts differ between regimes.** `20` paired seeds at `γ = 0.95` but
 only `5` at `γ = 0.999`, so the second regime's intervals rest on less data.
 
+**One planned protocol change was not implemented.** The advance predictions
+state that the `γ = 0.999` iteration budget would be raised from `15000` to
+`20000` for timed runs, so that the target would not be reached at the very
+edge of the horizon. The configurations still specify `15000`, and that is what
+ran. This changes no reported number — aggregation's crossing is at iteration
+`13204`, inside `15000`, and the timed run executes exactly that many
+iterations regardless of the budget — but the discrepancy is recorded rather
+than repaired by editing a dated document.
+
 **Instance-to-instance variance is near zero**, for the structural reason in
 section 1. The confidence intervals here are consequently narrow, and they
 describe repeatability on this benchmark rather than robustness across a

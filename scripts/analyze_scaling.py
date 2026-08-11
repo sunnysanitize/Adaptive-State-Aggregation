@@ -75,8 +75,12 @@ def main() -> int:
         # Preregistered: supported only if the interval excludes zero.
         supported = lo > 0
 
-        eff_vi = [vi_rows[s]["efficiency"]["10"] for s in seeds]
-        eff_ag = [ag_rows[s]["efficiency"]["10"] for s in seeds]
+        ## Read the widest thread count that was actually measured rather than
+        ## assuming the full ladder: a reduced run is still a valid run, and it
+        ## should report its own top count instead of failing.
+        top = str(max(int(p) for p in vi_rows[seeds[0]]["timings"]))
+        eff_vi = [vi_rows[s]["efficiency"][top] for s in seeds]
+        eff_ag = [ag_rows[s]["efficiency"][top] for s in seeds]
         ser_r = [
             ag_rows[s]["timings"]["1"]["median_s"] / vi_rows[s]["timings"]["1"]["median_s"]
             for s in seeds
@@ -91,7 +95,8 @@ def main() -> int:
             "paired_difference_s": {"mean": mean_d, "ci95": [lo, hi]},
             "ratio_at_p_star": {"mean": mean_r, "ci95": [r_lo, r_hi]},
             "serial_ratio_mean": float(np.mean(ser_r)),
-            "efficiency_10": {
+            "efficiency_at": int(top),
+            "efficiency": {
                 "vi": float(np.mean(eff_vi)),
                 "adaptive": float(np.mean(eff_ag)),
             },
@@ -103,13 +108,14 @@ def main() -> int:
         print(f"{name:32s} {out[-1]['num_states']:8d} {p_vi:>5s} {p_ag:>5s} "
               f"{mean_r:6.3f}x  [{lo:+.4f}, {hi:+.4f}]{mark}")
 
+    widest = out[0]["efficiency_at"] if out else 0
     print(f"\n{'config':32s} {'serial ratio':>12s} {'p* ratio':>10s} "
-          f"{'effVI(10)':>10s} {'effAG(10)':>10s}")
+          f"{f'effVI({widest})':>10s} {f'effAG({widest})':>10s}")
     for row in out:
         name = row["config"].replace("configs/", "").replace(".json", "")
         print(f"{name:32s} {row['serial_ratio_mean']:11.3f}x "
               f"{row['ratio_at_p_star']['mean']:9.3f}x "
-              f"{row['efficiency_10']['vi']:10.2f} {row['efficiency_10']['adaptive']:10.2f}")
+              f"{row['efficiency']['vi']:10.2f} {row['efficiency']['adaptive']:10.2f}")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps({"target": meta["target"], "rows": out}, indent=2))

@@ -50,3 +50,4 @@ Sessionx.vim
 /docs/*
 !/docs/predictions.md
 !/docs/parallel_note.md
+!/docs/reproduction_note.md

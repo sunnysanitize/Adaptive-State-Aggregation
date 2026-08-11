@@ -38,7 +38,6 @@ THEME = {
 }
 
 FONTS = ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"]
-THREADS = [1, 2, 4, 8, 10]
 ARMS = (("vi", "value iteration"), ("adaptive", "aggregation"))
 
 LABELS = {
@@ -59,20 +58,28 @@ def collect(paths: list[Path]) -> dict[tuple[str, str], list[dict[str, Any]]]:
     return rows
 
 
-def series(rows: list[dict[str, Any]], key: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+## Whatever thread counts the run actually measured, not an assumed ladder. A
+## reduced run is still a valid run and must still plot.
+def thread_counts(rows: list[dict[str, Any]]) -> list[int]:
+    return sorted(int(p) for p in rows[0]["timings"])
+
+
+def series(
+    rows: list[dict[str, Any]], key: str, threads: list[int]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     ## Spread across seeds, not just the mean: the intervals are narrow here and
     ## a plot that showed only a line would be hiding that, not conveying it.
-    per_thread = [[r["timings"][str(p)][key] for r in rows] for p in THREADS]
+    per_thread = [[r["timings"][str(p)][key] for r in rows] for p in threads]
     values = np.array([np.mean(v) for v in per_thread])
     lo = np.array([np.percentile(v, 10) for v in per_thread])
     hi = np.array([np.percentile(v, 90) for v in per_thread])
     return values, lo, hi
 
 
-def style(ax, c, xlabel, ylabel, title):
+def style(ax, c, xlabel, ylabel, title, threads):
     ax.set_xscale("log", base=2)
-    ax.set_xticks(THREADS)
-    ax.set_xticklabels([str(p) for p in THREADS])
+    ax.set_xticks(threads)
+    ax.set_xticklabels([str(p) for p in threads])
     ax.minorticks_off()
     ax.set_xlabel(xlabel, fontsize=9, color=c["ink2"])
     ax.set_ylabel(ylabel, fontsize=9, color=c["ink2"])
@@ -99,28 +106,30 @@ def figure(rows, mode):
         for panel in (top, bottom):
             panel.set_facecolor(c["surface"])
 
+        threads = thread_counts(rows[(config, "vi")])
+
         for arm, label in ARMS:
             data = rows[(config, arm)]
             colour = c["vi"] if arm == "vi" else c["agg"]
 
-            times, t_lo, t_hi = series(data, "median_s")
-            top.fill_between(THREADS, t_lo, t_hi, color=colour, alpha=0.18, linewidth=0)
-            top.plot(THREADS, times, marker="o", markersize=8, linewidth=2, color=colour,
+            times, t_lo, t_hi = series(data, "median_s", threads)
+            top.fill_between(threads, t_lo, t_hi, color=colour, alpha=0.18, linewidth=0)
+            top.plot(threads, times, marker="o", markersize=8, linewidth=2, color=colour,
                      markeredgecolor=c["surface"], markeredgewidth=2, label=label, zorder=3)
 
             base = times[0]
             speedup = base / times
-            bottom.plot(THREADS, speedup, marker="o", markersize=8, linewidth=2,
+            bottom.plot(threads, speedup, marker="o", markersize=8, linewidth=2,
                         color=colour, markeredgecolor=c["surface"], markeredgewidth=2,
                         label=label, zorder=3)
 
             ## Direct label at the right edge, so the two arms are never told
             ## apart by colour alone. VI sits below aggregation everywhere, so
             ## the offsets never collide.
-            top.annotate(label, (THREADS[-1], times[-1]), textcoords="offset points",
+            top.annotate(label, (threads[-1], times[-1]), textcoords="offset points",
                          xytext=(-4, 9 if arm == "adaptive" else -17), ha="right",
                          fontsize=8, color=c["ink2"])
-            bottom.annotate(f"{speedup[-1]:.2f}x", (THREADS[-1], speedup[-1]),
+            bottom.annotate(f"{speedup[-1]:.2f}x", (threads[-1], speedup[-1]),
                             textcoords="offset points",
                             xytext=(-4, 9 if arm == "vi" else -16), ha="right",
                             fontsize=8, color=c["ink2"])
@@ -128,22 +137,25 @@ def figure(rows, mode):
         ## Log-log, so perfect scaling is a straight diagonal. On a log x-axis a
         ## linear y-axis would bend y = x into what looks like exponential
         ## growth and squash the measured curves against the floor.
-        bottom.plot(THREADS, THREADS, linestyle=(0, (5, 3)), linewidth=1.6,
+        bottom.plot(threads, threads, linestyle=(0, (5, 3)), linewidth=1.6,
                     color=c["muted"], zorder=1)
-        bottom.annotate("perfect scaling", (THREADS[-1], THREADS[-1]),
+        bottom.annotate("perfect scaling", (threads[-1], threads[-1]),
                         textcoords="offset points", xytext=(-2, -13), ha="right",
                         fontsize=8, color=c["muted"])
 
         ## Absolute time on a linear axis from zero: within a panel the range is
         ## under 2x, where a log axis produces almost no labelled ticks and the
         ## reader cannot recover a value.
-        style(top, c, "", "time to target (s)" if col == 0 else "", LABELS[config])
+        style(top, c, "", "time to target (s)" if col == 0 else "", LABELS[config],
+              threads)
         top.set_ylim(0, None)
-        style(bottom, c, "threads", "speedup vs 1 thread" if col == 0 else "", "")
+        style(bottom, c, "threads", "speedup vs 1 thread" if col == 0 else "", "",
+              threads)
         bottom.set_yscale("log", base=2)
-        bottom.set_ylim(0.9, 12)
-        bottom.set_yticks([1, 2, 4, 8])
-        bottom.set_yticklabels(["1", "2", "4", "8"])
+        bottom.set_ylim(0.9, threads[-1] * 1.25)
+        ticks = [t for t in (1, 2, 4, 8, 16) if t <= threads[-1]]
+        bottom.set_yticks(ticks)
+        bottom.set_yticklabels([str(t) for t in ticks])
 
     fig.suptitle(
         "Value iteration is faster in absolute time and gains more from threads — "
