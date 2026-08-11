@@ -23,3 +23,30 @@ class Counters:
             return 0.0
         return (self.actual - self.billed) / self.billed
 
+
+# slots, so a mistyped field name in the loop's setattr raises rather than
+# quietly creating a fifth bucket that nothing ever reads.
+@dataclass(slots=True)
+class PhaseTimes:
+
+    global_ns: int = 0
+    aggregate_ns: int = 0
+    rebin_ns: int = 0
+    lift_ns: int = 0
+
+    @property
+    def total_ns(self) -> int:
+        return self.global_ns + self.aggregate_ns + self.rebin_ns + self.lift_ns
+
+    def share(self) -> dict[str, float]:
+        total = self.total_ns
+        if total == 0:
+            return {"global": 0.0, "aggregate": 0.0, "rebin": 0.0, "lift": 0.0}
+
+        return {
+            "global": self.global_ns / total,
+            "aggregate": self.aggregate_ns / total,
+            "rebin": self.rebin_ns / total,
+            "lift": self.lift_ns / total,
+        }
+

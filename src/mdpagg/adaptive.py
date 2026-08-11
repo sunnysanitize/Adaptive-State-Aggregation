@@ -1,4 +1,5 @@
 import math
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -7,7 +8,7 @@ import numba
 import numpy as np
 
 from .backup import backup_lifted
-from .counters import Counters
+from .counters import Counters, PhaseTimes
 from .mdp import TabularMdp, unpack
 from .norms import span_seminorm
 from .partition import Partition, allocate, lift_into, rebin_by_value
@@ -57,6 +58,7 @@ class AdaptiveState:
     residual_span: float = math.inf
     wall_ns: int = 0
     counters: Counters = field(default_factory=Counters)
+    phase_times: PhaseTimes | None = None
 
 EpsilonPolicy = Callable[[AdaptiveState], float]
 
@@ -78,6 +80,7 @@ class AdaptiveResult:
     t_sa: int
     counters: Counters
     wall_ns: int
+    phase_times: PhaseTimes | None = None
 
 
 @contextmanager
@@ -180,14 +183,28 @@ class _AdaptiveLoop:
         with _clocked(self.state):
             if phase is Phase.GLOBAL:
                 if entry:
-                    self.lift()
-                self.global_sweep()
+                    self.run(self.lift, "lift_ns")
+                self.run(self.global_sweep, "global_ns")
             else:
                 if entry:
-                    self.rebin()
-                self.aggregate_sweep()
+                    self.run(self.rebin, "rebin_ns")
+                self.run(self.aggregate_sweep, "aggregate_ns")
 
         return phase
+
+    # Timed at the call site, not inside each method, so the four buckets
+    # partition the same region `_clocked` measures and cannot double-count.
+    # Off by default: the headline time-to-target runs should carry no
+    # instrumentation the comparison does not need.
+    def run(self, work: Callable[[], None], bucket: str) -> None:
+        times = self.state.phase_times
+        if times is None:
+            work()
+            return
+
+        start = time.perf_counter_ns()
+        work()
+        setattr(times, bucket, getattr(times, bucket) + time.perf_counter_ns() - start)
 
     def lift(self) -> None:
         state = self.state
@@ -244,6 +261,7 @@ def run_adaptive(
     alpha: Callable[[int], float] = inverse_sqrt,
     max_groups: int = 4096,
     observer: Callable[[int, Phase, AdaptiveState], None] | None = None,
+    phase_timing: bool = False,
 ) -> AdaptiveResult:
 
     arrays = unpack(mdp)
@@ -251,6 +269,7 @@ def run_adaptive(
         v=np.zeros(mdp.num_states, dtype=VALUE),
         w=np.zeros(min(max_groups, mdp.num_states), dtype=VALUE),
         part=allocate(mdp.num_states, max_groups),
+        phase_times=PhaseTimes() if phase_timing else None,
     )
     loop = _AdaptiveLoop(
         arrays=arrays,
@@ -276,7 +295,8 @@ def run_adaptive(
 
     if iterations and schedule.phase_at(iterations - 1) is Phase.AGGREGATE:
         with _clocked(state):
-            loop.lift()
+            loop.run(loop.lift, "lift_ns")
 
     return AdaptiveResult(v=state.v, iterations=iterations, t_sa=state.t_sa,
-                          counters=state.counters, wall_ns=state.wall_ns)
+                          counters=state.counters, wall_ns=state.wall_ns,
+                          phase_times=state.phase_times)
