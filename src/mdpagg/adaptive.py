@@ -91,31 +91,49 @@ def _clocked(state: AdaptiveState) -> Iterator[None]:
     state.wall_ns += elapsed.wall_ns
 
 
-@numba.njit
-def _aggregate_sweep(
-    sa_begin,
-    succ_begin,
-    succ_state,
-    succ_prob,
-    cost,
-    w,
-    out,
-    group_of,
-    members,
-    offset,
-    num_groups,
-    draws,
-    alpha,
-    gamma,
-):
+# One source, compiled twice. `numba.prange` is `range` when parallel=False, so
+# the serial and threaded kernels cannot drift apart the way two hand-written
+# copies would. Every group writes its own `out[j]` and reads only `w`, so the
+# loop carries no dependency and each group's arithmetic is unchanged -- which
+# is what makes exact equality between the two a reasonable thing to demand.
+#
+# `draws` arrives already generated. That is deliberate: drawing inside the
+# kernel would let thread scheduling decide which states get sampled, and the
+# two kernels would then be running different algorithms rather than the same
+# one at different widths.
+def make_aggregate_sweep(parallel):
 
-    for j in range(num_groups):
-        lo = offset[j]
-        s = members[lo + int(draws[j] * (offset[j + 1] - lo))]
-        q = backup_lifted(
-            sa_begin, succ_begin, succ_state, succ_prob, cost, s, w, group_of, gamma
-        )[0]
-        out[j] = (1.0 - alpha) * w[j] + alpha * q
+    @numba.njit(parallel=parallel)
+    def aggregate_sweep(
+        sa_begin,
+        succ_begin,
+        succ_state,
+        succ_prob,
+        cost,
+        w,
+        out,
+        group_of,
+        members,
+        offset,
+        num_groups,
+        draws,
+        alpha,
+        gamma,
+    ):
+
+        for j in numba.prange(num_groups):
+            lo = offset[j]
+            s = members[lo + int(draws[j] * (offset[j + 1] - lo))]
+            q = backup_lifted(
+                sa_begin, succ_begin, succ_state, succ_prob, cost, s, w, group_of, gamma
+            )[0]
+            out[j] = (1.0 - alpha) * w[j] + alpha * q
+
+    return aggregate_sweep
+
+
+_aggregate_sweep = make_aggregate_sweep(False)
+_aggregate_sweep_parallel = make_aggregate_sweep(True)
 
 
 def _aggregate_into(

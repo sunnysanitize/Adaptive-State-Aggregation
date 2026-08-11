@@ -87,6 +87,41 @@ down to cost per iteration, and aggregation's grows more slowly.
 That makes the real question sharper: **do threads reverse a trend that, on one
 thread, runs the other way?**
 
+### Where the aggregation solver spends its time
+
+Measured `2026-08-10` by `scripts/phase_split.py`, on one thread, before any
+parallel kernel existed. Shares are of solver time.
+
+| Parameters | Size | Global | Aggregate | Rebin | Lift |
+|:--|--:|--:|--:|--:|--:|
+| `γ = 0.95` | `200²` | `65.9%` | `1.5%` | `22.0%` | `10.5%` |
+| `γ = 0.95` | `500²` | `71.7%` | `0.3%` | `17.9%` | `10.2%` |
+| `γ = 0.95` | `1000²` | `75.0%` | `0.1%` | `14.3%` | `10.6%` |
+| `γ = 0.999` | `200²` | `54.7%` | `16.7%` | `19.7%` | `8.9%` |
+
+Global sweeps and lifting hand out one independent write per state, so both
+thread cleanly. Rebinning does not: the aggregate step samples a state by its
+position within a group, so a scatter that reorders `members` changes which
+states get backed up and quietly changes the algorithm. Rebinning is therefore
+the serial fraction unless a stable parallel scatter is written.
+
+Two consequences follow, and both are recorded before any parallel measurement:
+
+**At `γ = 0.95` the aggregate phase is `0.1–1.5%` of runtime.** The phase the
+algorithm is named for is a rounding error in its own cost, because there are
+only about `61` groups to update against `|S|` global backups and two
+`|S|`-sized maintenance passes per cycle. Threading it cannot help there. At
+`γ = 0.999` it is `16.7%`, so the two settings need different engineering, and
+which kernel the end-to-end runs use is decided by the microbenchmark rather
+than by preference.
+
+**Rebinning sets a ceiling on aggregation's speedup.** If it stays serial,
+Amdahl's law caps the solver at `4.5×`, `5.6×` and `7.0×` at `200²`, `500²` and
+`1000²`, however many threads are added — `efficiency(10) ≤ 0.44` at `1000²`.
+VI has no equivalent bottleneck: it is almost entirely global sweep, so only
+memory bandwidth limits it. Note also that the ceiling *rises* with size, which
+compounds the trend above rather than opposing it.
+
 ## 4 The plan
 
 ### Configurations
@@ -175,6 +210,14 @@ VI wins the main comparison at every size, by a wider margin than serial at
 spread across threads while VI has `|S|`. Claim 2 fails at `γ = 0.95`. It
 should hold at `γ = 0.999`, where `4156` groups give the aggregate kernel
 enough work to be worth handing to threads.
+
+**Where this range came from.** `0.10–0.35` was written down before the phase
+split was measured, and it is left unchanged. The split came afterwards, still
+with no parallel kernel in existence, and it caps aggregation at
+`efficiency(10) ≤ 0.44` at `1000²` on its own. So the guess and the measured
+ceiling agree, and the ceiling is the sharper thing to judge the result
+against: an observed `efficiency(10)` above `0.44` means rebinning did not stay
+serial, or the phase split is wrong.
 
 If the aggregate kernel turns out slower on many threads than on one, that is
 recorded as evidence for this explanation, not thrown away. The end-to-end
