@@ -143,6 +143,48 @@ def test_bad_strides_are_rejected():
         allocate(10, fine_stride=0)
 
 
+def test_an_explicit_checkpoint_set_replaces_the_coarse_stride():
+    """5.6 scores the policy at named iterations rather than every 50th row.
+
+    Scoring runs `policy_value` to 1e-10 -- about 450 sweeps, 20 ms -- so at a
+    10,000-iteration horizon the default stride would score 200 times, wrapping
+    4 s of observation around 0.8 s of solving. That does not corrupt the clock
+    (the observer runs outside `_clocked`) but it does move cache and thermal
+    state between timed steps, which is what the plan warns against.
+
+    A checkpoint set that silently degraded back to the stride would restore the
+    whole 5:1 background and every run would still look fine, so the selection
+    is asserted directly.
+    """
+    t = allocate(100, fine_stride=10, coarse_stride=50, policy_loss_at=(0, 20, 90))
+
+    fired = [i for i in range(0, 100, 10) if t.wants_policy_loss(i)]
+
+    assert fired == [0, 20, 90]
+
+
+def test_the_coarse_stride_still_applies_when_no_checkpoints_are_given():
+    """The control. The maze arms and every shared-core config pass no
+    checkpoints, and their traces must stay byte-identical."""
+    t = allocate(100, fine_stride=10, coarse_stride=50)
+
+    fired = [i for i in range(0, 100, 10) if t.wants_policy_loss(i)]
+
+    assert fired == [0, 50]
+
+
+def test_the_document_records_the_checkpoints_it_was_measured_with(tmp_path):
+    """An output file has to state how it was measured, or a reader cannot tell
+    a sparse curve from a curve with missing points."""
+    t = allocate(100, fine_stride=10, policy_loss_at=(0, 20))
+    path = tmp_path / "run.json"
+
+    write(path, document(t, {"k": 1}, {"master": 0}, "abc", 5))
+
+    assert read(path)["policy_loss_at"] == [0, 20]
+    assert document(filled_trace(), {}, {}, "abc", 5)["policy_loss_at"] is None
+
+
 def test_environment_names_the_three_versions_the_repro_note_wants():
     env = trace_module.environment()
 

@@ -50,11 +50,14 @@ class Trace:
     wall_ns: CountArray
 
     rows: int = 0
+    policy_loss_at: frozenset[int] | None = None
 
     def wants_row(self, t: int) -> bool:
         return t % self.fine_stride == 0
 
     def wants_policy_loss(self, t: int) -> bool:
+        if self.policy_loss_at is not None:
+            return t in self.policy_loss_at
         return t % self.coarse_stride == 0
 
     def record(
@@ -95,7 +98,12 @@ class Trace:
         return {name: getattr(self, name)[: self.rows].tolist() for name in COLUMNS}
 
 
-def allocate(iterations: int, fine_stride: int = 1, coarse_stride: int = 50) -> Trace:
+def allocate(
+    iterations: int,
+    fine_stride: int = 1,
+    coarse_stride: int = 50,
+    policy_loss_at: tuple[int, ...] | None = None,
+) -> Trace:
     if fine_stride < 1 or coarse_stride < 1:
         raise ValueError(
             f"strides must be >= 1, got fine {fine_stride}, coarse {coarse_stride}"
@@ -106,6 +114,7 @@ def allocate(iterations: int, fine_stride: int = 1, coarse_stride: int = 50) -> 
     return Trace(
         fine_stride=fine_stride,
         coarse_stride=coarse_stride,
+        policy_loss_at=None if policy_loss_at is None else frozenset(policy_loss_at),
         iteration=np.zeros(n, dtype=INDEX),
         phase=np.zeros(n, dtype=INDEX),
         err_inf=np.full(n, math.nan, dtype=VALUE),
@@ -150,6 +159,9 @@ def document(
             "fine": trace.fine_stride,
             "coarse": trace.coarse_stride,
         },
+        "policy_loss_at": (
+            None if trace.policy_loss_at is None else sorted(trace.policy_loss_at)
+        ),
         "trace": trace.columns(),
     }
 

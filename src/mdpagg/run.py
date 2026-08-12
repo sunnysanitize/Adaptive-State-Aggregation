@@ -132,7 +132,8 @@ def execute(
 
     trace = trace_module.allocate(cfg.algorithm.iterations,
                                   fine_stride=cfg.trace.fine_stride,
-                                  coarse_stride=cfg.trace.coarse_stride)
+                                  coarse_stride=cfg.trace.coarse_stride,
+                                  policy_loss_at=cfg.trace.policy_loss_at)
 
     result = solve(
         cfg,

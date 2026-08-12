@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Frozen(BaseModel):
@@ -79,6 +79,7 @@ class TraceCfg(Frozen):
 
     fine_stride: int = Field(default=1, ge=1)
     coarse_stride: int = Field(default=50, ge=1)
+    policy_loss_at: tuple[int, ...] | None = None
 
 
 class RunCfg(Frozen):
@@ -87,6 +88,21 @@ class RunCfg(Frozen):
     algorithm: AlgorithmCfg
     trace: TraceCfg = TraceCfg()
     master_seed: int = 0
+
+    @model_validator(mode="after")
+    def _checkpoints_are_reachable(self) -> "RunCfg":
+        for t in self.trace.policy_loss_at or ():
+            if t < 0 or t >= self.algorithm.iterations:
+                raise ValueError(
+                    f"policy_loss checkpoint {t} would never fire: the loop runs "
+                    f"t over range({self.algorithm.iterations})"
+                )
+            if t % self.trace.fine_stride:
+                raise ValueError(
+                    f"policy_loss checkpoint {t} would never fire: the observer "
+                    f"only sees rows on the fine stride of {self.trace.fine_stride}"
+                )
+        return self
 
 
 def problem_seed(problem: ProblemCfg) -> int | None:
