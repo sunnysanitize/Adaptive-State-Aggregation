@@ -63,6 +63,16 @@ def policy_value(
     )
 
 
+def loss_of_policy(
+    mdp: TabularMdp,
+    policy: IndexArray,
+    v_star: ValueArray,
+    gamma: float,
+    tol: float = 1e-10,
+) -> float:
+    return float(max_norm(policy_value(mdp, policy, gamma, tol) - v_star))
+
+
 def policy_loss(
     mdp: TabularMdp,
     v: ValueArray,
@@ -70,5 +80,4 @@ def policy_loss(
     gamma: float,
     tol: float = 1e-10,
 ) -> float:
-    greedy = policy_value(mdp, greedy_policy(mdp, v, gamma), gamma, tol)
-    return float(max_norm(greedy - v_star))
+    return loss_of_policy(mdp, greedy_policy(mdp, v, gamma), v_star, gamma, tol)

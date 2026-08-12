@@ -2,6 +2,7 @@ import argparse
 import math
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -21,11 +22,11 @@ from .config import EpsilonCfg, RunCfg, load, problem_seed, with_problem_seed
 from .mdp import TabularMdp
 from .norms import max_norm
 from .partition import lift_into
-from .policy import policy_loss
+from .policy import greedy_policy, loss_of_policy
 from .rng import streams
 from .solve import CACHE_ROOT, GroundTruth, load_ground_truth
 from .trace import Trace
-from .types import VALUE, Phase, ValueArray
+from .types import VALUE, IndexArray, Phase, ValueArray
 
 RESULTS_ROOT = Path("results")
 
@@ -49,10 +50,31 @@ def seeds_of(cfg: RunCfg) -> dict[str, Any]:
     }
 
 
-def loss_against(
-    cfg: RunCfg, mdp: TabularMdp, v: ValueArray, truth: GroundTruth
-) -> float:
-    return policy_loss(mdp, v, truth.v_star, cfg.problem.gamma, cfg.problem.solve_tol)
+@dataclass
+class PolicyScorer:
+
+    mdp: TabularMdp
+    v_star: ValueArray
+    gamma: float
+    tol: float
+    evaluations: int = 0
+    _policy: IndexArray | None = field(default=None, repr=False)
+    _loss: float = math.nan
+
+    def __call__(self, v: ValueArray) -> float:
+        policy = greedy_policy(self.mdp, v, self.gamma)
+
+        if self._policy is not None and np.array_equal(policy, self._policy):
+            return self._loss
+
+        self.evaluations += 1
+        self._policy = policy
+        self._loss = loss_of_policy(self.mdp, policy, self.v_star, self.gamma, self.tol)
+        return self._loss
+
+
+def scorer_for(cfg: RunCfg, truth: GroundTruth, mdp: TabularMdp) -> PolicyScorer:
+    return PolicyScorer(mdp, truth.v_star, cfg.problem.gamma, cfg.problem.solve_tol)
 
 
 def observer_for(
@@ -61,8 +83,10 @@ def observer_for(
     truth: GroundTruth,
     trace: Trace,
     trace_policy_loss: bool = True,
+    scorer: PolicyScorer | None = None,
 ) -> Observer:
     lifted: ValueArray = np.empty(mdp.num_states, dtype=VALUE)
+    score = scorer if scorer is not None else scorer_for(cfg, truth, mdp)
 
     def iterate(phase: Phase, state: AdaptiveState) -> ValueArray:
         if phase is Phase.AGGREGATE and state.part.num_groups > 0:
@@ -78,7 +102,7 @@ def observer_for(
         loss = math.nan
 
         if trace_policy_loss and trace.wants_policy_loss(t):
-            loss = loss_against(cfg, mdp, current, truth)
+            loss = score(current)
 
         trace.record(
             t=t,
@@ -109,16 +133,20 @@ def solve(cfg: RunCfg, mdp: TabularMdp, observer: Observer) -> AdaptiveResult:
 
 
 def summary_of(cfg: RunCfg, mdp: TabularMdp, truth: GroundTruth,
-               trace: Trace, result: AdaptiveResult) -> dict[str, Any]:
+               trace: Trace, result: AdaptiveResult,
+               scorer: PolicyScorer | None = None) -> dict[str, Any]:
+
+    score = scorer if scorer is not None else scorer_for(cfg, truth, mdp)
 
     return {
         "err_inf": float(max_norm(result.v - truth.v_star)),
-        "policy_loss": loss_against(cfg, mdp, result.v, truth),
+        "policy_loss": score(result.v),
         "num_groups": int(trace.num_groups[: trace.rows].max()) if trace.rows else 0,
         "t_sa": result.t_sa,
         "billed": result.counters.billed,
         "actual": result.counters.actual,
         "overhead_fraction": result.counters.overhead_fraction,
+        "policy_evaluations": score.evaluations,
     }
 
 
@@ -135,16 +163,19 @@ def execute(
                                   coarse_stride=cfg.trace.coarse_stride,
                                   policy_loss_at=cfg.trace.policy_loss_at)
 
+    scorer = scorer_for(cfg, truth, mdp)
+
     result = solve(
         cfg,
         mdp,
-        observer_for(cfg, mdp, truth, trace, trace_policy_loss=trace_policy_loss),
+        observer_for(cfg, mdp, truth, trace,
+                     trace_policy_loss=trace_policy_loss, scorer=scorer),
     )
 
     doc = trace_module.document(trace, cfg.model_dump(mode="json"),
                                 seeds_of(cfg), truth.hash, result.wall_ns)
 
-    doc["final"] = summary_of(cfg, mdp, truth, trace, result)
+    doc["final"] = summary_of(cfg, mdp, truth, trace, result, scorer=scorer)
 
     return doc
 

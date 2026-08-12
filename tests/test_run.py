@@ -15,6 +15,7 @@ from mdpagg.config import (
     TraceCfg,
 )
 from mdpagg.partition import allocate as allocate_partition
+from mdpagg.policy import greedy_policy, policy_loss
 from mdpagg.solve import GroundTruth
 from mdpagg.trace import allocate as allocate_trace
 from mdpagg.types import VALUE, Phase
@@ -59,7 +60,7 @@ def test_observer_can_skip_intermediate_policy_evaluation(monkeypatch):
         calls += 1
         return 123.0
 
-    monkeypatch.setattr(run_module, "loss_against", fake_loss)
+    monkeypatch.setattr(run_module, "loss_of_policy", fake_loss)
     observe = run_module.observer_for(
         cfg,
         fixture.mdp,
@@ -77,7 +78,7 @@ def test_observer_evaluates_requested_policy_loss_by_default(monkeypatch):
     fixture, cfg, truth, state = run_fixture()
     trace = allocate_trace(1, fine_stride=1, coarse_stride=1)
 
-    monkeypatch.setattr(run_module, "loss_against", lambda *_args: 123.0)
+    monkeypatch.setattr(run_module, "loss_of_policy", lambda *_args: 123.0)
     observe = run_module.observer_for(cfg, fixture.mdp, truth, trace)
     observe(0, Phase.GLOBAL, state)
 
@@ -115,3 +116,60 @@ def test_checkpoints_on_the_stride_and_inside_the_horizon_are_accepted():
     cfg = cfg_with_checkpoints(iterations=100, fine_stride=10, at=(0, 50, 90))
 
     assert cfg.trace.policy_loss_at == (0, 50, 90)
+
+
+def test_the_scorer_reuses_its_answer_when_the_greedy_policy_is_unchanged(monkeypatch):
+    """5.6's warm-start, in the one form that cannot move a number.
+
+    Warm-starting `policy_value` from the previous iterate is the obvious
+    reading and the wrong one: span-based stopping leaves the returned vector
+    dependent on where the iteration began, so `policy_loss` would become a
+    function of the checkpoint schedule. The shift is about tol/(1-gamma), some
+    2e-9, invisible in any reported digit -- but 6.2 asks whether the fixed
+    arm's traces are unchanged, and a control whose numbers move when the
+    measurement schedule moves is not a control.
+
+    Keying on the policy instead makes the saving exact: identical policy,
+    identical evaluation, identical number. Adding a constant to V shifts every
+    Q(s, a) by gamma times that constant, so the greedy policy is unchanged by
+    construction -- which is what distinguishes a cache keyed on the policy from
+    one keyed on the value vector.
+    """
+    fixture, _cfg, truth, _state = run_fixture()
+    calls = 0
+
+    def counted(*_args):
+        nonlocal calls
+        calls += 1
+        return 7.0
+
+    assert np.array_equal(
+        greedy_policy(fixture.mdp, fixture.v_star, fixture.gamma),
+        greedy_policy(fixture.mdp, fixture.v_star + 1000.0, fixture.gamma),
+    ), "the shift moved the greedy policy; the fixture has a near-tie"
+
+    monkeypatch.setattr(run_module, "loss_of_policy", counted)
+    scorer = run_module.PolicyScorer(fixture.mdp, truth.v_star, fixture.gamma, 1e-10)
+
+    first = scorer(fixture.v_star)
+    second = scorer(fixture.v_star + 1000.0)
+
+    assert first == second == 7.0
+    assert calls == 1
+    assert scorer.evaluations == 1
+
+
+def test_the_scorer_returns_exactly_what_the_uncached_path_returns():
+    """A cache keyed too loosely reports a stale policy's score under a new
+    policy's label -- a corrupted headline metric with nothing else to catch it.
+    Exact equality, not approx: both paths run the same evaluator on the same
+    policy at the same tolerance, so anything but a bitwise match means the
+    cache changed the computation."""
+    fixture, _cfg, truth, _state = run_fixture()
+    scorer = run_module.PolicyScorer(fixture.mdp, truth.v_star, fixture.gamma, 1e-10)
+
+    cached = scorer(fixture.v_star)
+
+    assert cached == policy_loss(
+        fixture.mdp, fixture.v_star, truth.v_star, fixture.gamma
+    )
