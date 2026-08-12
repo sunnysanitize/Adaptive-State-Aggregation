@@ -50,8 +50,9 @@ import itertools
 
 import numpy as np
 import pytest
+import sweep
 
-from mdpagg.config import InventoryProblem, with_problem_seed
+from mdpagg.config import InventoryProblem, load, problem_hash, with_problem_seed
 from mdpagg.inventory import (
     NUM_ACTIONS,
     costs,
@@ -349,6 +350,36 @@ def test_a_problem_seed_is_rejected_rather_than_ignored():
 
     with pytest.raises(ValueError, match="deterministic"):
         with_problem_seed(cfg, 7)
+
+
+def test_the_sweep_refuses_to_vary_an_inventory_problem_by_seed():
+    """`sweep.py --vary both` re-seeds the problem per arm, which is what "20
+    seeds" means for the maze. The inventory MDP has no problem-level
+    randomness, so the same flag must fail rather than quietly produce 20
+    identical instances.
+
+    Quietly is exactly what it did: `model_copy` does not validate, so it
+    attaches a `seed` attribute the model never declared, `model_dump` drops it
+    again, and the problem hash is unchanged -- 20 arms solving one instance
+    while the output reports 20 seeds. Every spread, IQR and confidence interval
+    at 5.6 would be computed over copies, and nothing about the run would look
+    wrong. `--vary both` is the default, so this is the path taken by anyone who
+    does not already know."""
+    cfg = load("configs/inventory_n3.json")
+
+    with pytest.raises(ValueError, match="deterministic"):
+        sweep.arm(cfg, 0.5, 7, "both")
+
+
+def test_the_sweep_still_varies_the_sampling_stream_for_inventory():
+    """The control: `--vary sampling` is the meaningful reading of 20 seeds
+    here, and it must keep working. `master_seed` moves, the problem does not."""
+    cfg = load("configs/inventory_n3.json")
+
+    varied = sweep.arm(cfg, 0.5, 7, "sampling")
+
+    assert varied.master_seed == 7
+    assert problem_hash(varied.problem) == problem_hash(cfg.problem)
 
 
 # --- 5.5, Gate 5 -------------------------------------------------------------

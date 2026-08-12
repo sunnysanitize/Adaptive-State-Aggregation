@@ -99,10 +99,10 @@ def problem_seed(problem: ProblemCfg) -> int | None:
 def with_problem_seed(problem: ProblemCfg, seed: int) -> ProblemCfg:
     if problem.kind != "maze":
         raise ValueError(
-            f"--problem-seed is meaningless for a {problem.kind!r} problem: it "
-            "is deterministic in its parameters, so the flag would change "
-            "nothing while appearing to vary the instance. Use --seed, which "
-            "drives sampling, instead."
+            f"seeding the problem is meaningless for a {problem.kind!r} problem: "
+            "it is deterministic in its parameters, so it would change nothing "
+            "while appearing to vary the instance. Vary the sampling stream "
+            "instead -- `--seed` on a single run, `--vary sampling` on a sweep."
         )
     return problem.model_copy(update={"seed": seed})
 

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from mdpagg.config import FixedEpsilonCfg, RunCfg, load
+from mdpagg.config import FixedEpsilonCfg, RunCfg, load, with_problem_seed
 from mdpagg.run import RESULTS_ROOT, execute
 from mdpagg.solve import CACHE_ROOT
 
@@ -24,7 +24,7 @@ def arm(cfg: RunCfg, eps: float, seed: int, vary: str) -> RunCfg:
     algorithm = cfg.algorithm.model_copy(update={"epsilon": FixedEpsilonCfg(value=eps)})
     update: dict[str, Any] = {"algorithm": algorithm, "master_seed": seed}
     if vary == "both":
-        update["problem"] = cfg.problem.model_copy(update={"seed": seed})
+        update["problem"] = with_problem_seed(cfg.problem, seed)
 
     return cfg.model_copy(update=update)
 

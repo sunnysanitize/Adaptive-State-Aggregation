@@ -31,6 +31,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `scripts/` holds the experiment harnesses, not helpers: the eps sweep is what
+# Gate 3 was decided on. Importable so their argument handling can be tested
+# rather than trusted.
+pythonpath = ["scripts"]
 markers = [
     "slow: builds large instances; deselect with -m 'not slow'",
 ]
