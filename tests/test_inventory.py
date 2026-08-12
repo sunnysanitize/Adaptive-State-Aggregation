@@ -56,7 +56,11 @@ from mdpagg.inventory import (
     NUM_ACTIONS,
     costs,
     decode,
+    do_nothing_policy,
     encode,
+    equicorrelated,
+    immediate_cost_policy,
+    linear_hedge_policy,
     make_inventory_mdp,
     num_states,
     transitions,
@@ -345,3 +349,80 @@ def test_a_problem_seed_is_rejected_rather_than_ignored():
 
     with pytest.raises(ValueError, match="deterministic"):
         with_problem_seed(cfg, 7)
+
+
+# --- 5.5, Gate 5 -------------------------------------------------------------
+
+
+def _baselines(num_assets: int, q_max: int) -> dict[str, np.ndarray]:
+    sigma = equicorrelated(num_assets, 0.5)
+    return {
+        "do-nothing": do_nothing_policy(num_assets, q_max),
+        "immediate cost": immediate_cost_policy(
+            num_assets, q_max, FILL, LAM, sigma, SPREAD
+        ),
+        "linear hedge": linear_hedge_policy(num_assets, q_max),
+    }
+
+
+def test_the_immediate_cost_policy_picks_one_action_everywhere():
+    """Not a curiosity -- it is the reason this baseline is worth reporting.
+
+    `cost(s,a) = lam*q'Sq - delta_a*f_a*live(s)`. The risk term does not depend
+    on the action and `live(s)` scales every action's revenue equally, so the
+    cheapest action this period is whichever maximises `delta_a*f_a`, the same
+    one at every state: action 2, since the frozen ladder gives
+    `delta*f = [0.1, 0.16, 0.2, 0.18, 0.12]`.
+
+    So this period's cost is blind to inventory, and everything the optimal
+    policy is worth comes from anticipating where trading takes the book. That
+    claim is only true while the ladder holds; a later edit to `SPREAD` could
+    make the rule depend on the state again and quietly change what this
+    baseline denotes, which is what this pins."""
+    policy = immediate_cost_policy(N, Q, FILL, LAM, SIGMA3, SPREAD)
+
+    assert np.array_equal(np.unique(policy), np.array([2]))
+
+
+def test_the_hedge_quotes_wider_the_more_exposed_the_book_is():
+    """A hedge that collapsed to a constant would still pass Gate 5 -- every
+    constant policy is worse than optimal -- so the gate cannot tell whether
+    this baseline is still a hedge. Aggressiveness rises with the most-exposed
+    asset, spans the ladder, and is flat only where the book is."""
+    inventories = decode(np.arange(num_states(N, Q), dtype=INDEX), N, Q)
+    exposure = np.abs(inventories).max(axis=1)
+
+    policy = linear_hedge_policy(N, Q)
+
+    assert policy[exposure == 0] == 0
+    assert np.all(policy[exposure == Q] == NUM_ACTIONS - 1)
+    assert np.all(np.diff(policy[np.argsort(exposure, kind="stable")]) >= 0)
+
+
+@pytest.mark.parametrize("name", ["do-nothing", "immediate cost", "linear hedge"])
+def test_no_baseline_beats_the_optimal_policy_anywhere(name):
+    """**Gate 5.** `V*` is the pointwise minimum over policies, so a baseline
+    scoring below it at even one state is not a surprising result -- it is
+    impossible, and means the formulation is wrong rather than good. A flipped
+    sign, a maximisation, or a mis-indexed pair in `_evaluate_sweep` all show up
+    here and nowhere else; each would leave the solver converging happily and
+    every number after 5.6 wrong with nothing to reveal it.
+
+    Run on the real study instance, not a miniature: the gate is a claim about
+    the `N=3, Q=10` MDP every Project II number is measured on, and the exact
+    solve plus three evaluations costs well under a second.
+
+    The tolerance is 5.4's, for 5.4's reason -- span-seminorm stopping leaves a
+    gap carrying a factor of `1/(1-gamma)`, so a bare `tol` would fail on
+    correct code. The measured margins clear it by nine orders of magnitude, so
+    the verdict is decided by the formulation, not by numerics.
+    """
+    tol = 1e-12
+    admissible = 3.0 * tol / (1.0 - GAMMA)
+    m = make_inventory_mdp(N, Q, FILL, LAM, SIGMA3, SPREAD)
+    v_star = value_iteration(m, GAMMA, tol=tol).v
+
+    gap = policy_value(m, _baselines(N, Q)[name], GAMMA, tol=tol) - v_star
+
+    assert gap.min() > -admissible
+    assert gap.max() > admissible
