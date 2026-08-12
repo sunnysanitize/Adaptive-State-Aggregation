@@ -17,7 +17,7 @@ from .adaptive import (
     ResidualSpanEpsilon,
     run_adaptive,
 )
-from .config import EpsilonCfg, RunCfg, load
+from .config import EpsilonCfg, RunCfg, load, problem_seed, with_problem_seed
 from .mdp import TabularMdp
 from .norms import max_norm
 from .partition import lift_into
@@ -44,7 +44,7 @@ def make_epsilon(cfg: EpsilonCfg) -> EpsilonPolicy:
 def seeds_of(cfg: RunCfg) -> dict[str, Any]:
     return {
         "master": cfg.master_seed,
-        "problem": cfg.problem.seed,
+        "problem": problem_seed(cfg.problem),
         "sampling_derivation": "SeedSequence(master).spawn(2)[1]",
     }
 
@@ -149,10 +149,9 @@ def execute(
 
 
 def default_output(cfg: RunCfg, config_path: Path) -> Path:
-    return (
-        RESULTS_ROOT
-        / f"{config_path.stem}_p{cfg.problem.seed}_seed{cfg.master_seed}.json"
-    )
+    seed = problem_seed(cfg.problem)
+    tag = "" if seed is None else f"_p{seed}"
+    return RESULTS_ROOT / f"{config_path.stem}{tag}_seed{cfg.master_seed}.json"
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -183,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.seed is not None:
         cfg = cfg.model_copy(update={"master_seed": args.seed})
     if args.problem_seed is not None:
-        problem = cfg.problem.model_copy(update={"seed": args.problem_seed})
+        problem = with_problem_seed(cfg.problem, args.problem_seed)
         cfg = cfg.model_copy(update={"problem": problem})
 
     try:

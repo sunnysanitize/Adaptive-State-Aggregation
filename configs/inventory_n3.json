@@ -1,0 +1,20 @@
+{
+  "problem": {
+    "kind": "inventory",
+    "num_assets": 3,
+    "q_max": 10,
+    "lam": 0.02,
+    "rho": 0.5,
+    "fill": [0.1, 0.2, 0.4, 0.6, 0.8],
+    "spread": [1.0, 0.8, 0.5, 0.3, 0.15],
+    "gamma": 0.95
+  },
+  "algorithm": {
+    "iterations": 1000,
+    "epsilon": {"kind": "fixed", "value": 0.5},
+    "schedule": {"global_len": 2, "agg_len": 5},
+    "max_groups": 4096
+  },
+  "trace": {"fine_stride": 1, "coarse_stride": 50},
+  "master_seed": 0
+}
