@@ -95,3 +95,8 @@ def make_inventory_mdp(
         succ_prob,
         costs(num_assets, q_max, fill, lam, sigma, spread),
     )
+
+
+def equicorrelated(num_assets: int, rho: float) -> ValueArray:
+    off = np.full((num_assets, num_assets), rho, dtype=VALUE)
+    return off + np.eye(num_assets, dtype=VALUE) * (1.0 - rho)

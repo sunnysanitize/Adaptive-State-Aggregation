@@ -5,7 +5,15 @@ from pathlib import Path
 
 import numpy as np
 
-from .config import ProblemCfg, RunCfg, canonical_json, load, problem_hash
+from .config import (
+    ProblemCfg,
+    RunCfg,
+    canonical_json,
+    load,
+    problem_hash,
+    with_problem_seed,
+)
+from .inventory import equicorrelated, make_inventory_mdp
 from .maze import make_standard_maze
 from .mdp import TabularMdp, build, unpack
 from .norms import max_norm
@@ -29,6 +37,15 @@ class GroundTruth:
 def build_problem(problem: ProblemCfg) -> TabularMdp:
     if problem.kind == "maze":
         return make_standard_maze(problem.dims, problem.p, problem.seed)
+    if problem.kind == "inventory":
+        return make_inventory_mdp(
+            problem.num_assets,
+            problem.q_max,
+            np.asarray(problem.fill, dtype=VALUE),
+            problem.lam,
+            equicorrelated(problem.num_assets, problem.rho),
+            np.asarray(problem.spread, dtype=VALUE),
+        )
 
     raise ValueError(f"unknown problem kind {problem.kind!r}")
 
@@ -148,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     cfg: RunCfg = load(args.config)
     problem = cfg.problem
     if args.problem_seed is not None:
-        problem = problem.model_copy(update={"seed": args.problem_seed})
+        problem = with_problem_seed(problem, args.problem_seed)
 
     path = cache_path(problem, args.root)
 
