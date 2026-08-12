@@ -22,7 +22,25 @@ class MazeProblem(Frozen):
     target_norm: float = Field(default=100.0, gt=0.0)
 
 
-ProblemCfg = MazeProblem
+class InventoryProblem(Frozen):
+
+    kind: Literal["inventory"] = "inventory"
+    num_assets: int = Field(ge=1)
+    q_max: int = Field(ge=1)
+    lam: float = Field(gt=0.0)
+    # Equicorrelated sigma, unit diagonal. Bounded below 1 to stay positive
+    # definite; 0 is permitted so the separable control arm stays expressible.
+    rho: float = Field(ge=0.0, lt=1.0)
+    fill: tuple[float, ...]
+    spread: tuple[float, ...]
+    gamma: float = Field(default=0.95, gt=0.0, lt=1.0)
+    solve_tol: float = Field(default=1e-10, gt=0.0)
+    target_norm: float = Field(default=100.0, gt=0.0)
+
+
+ProblemCfg = Annotated[
+    MazeProblem | InventoryProblem, Field(discriminator="kind")
+]
 
 
 class FixedEpsilonCfg(Frozen):
@@ -69,6 +87,24 @@ class RunCfg(Frozen):
     algorithm: AlgorithmCfg
     trace: TraceCfg = TraceCfg()
     master_seed: int = 0
+
+
+def problem_seed(problem: ProblemCfg) -> int | None:
+    # None means the generator is deterministic in its parameters, not that a
+    # seed was forgotten. The inventory MDP has no problem-level randomness --
+    # its 20 paired seeds at 5.6 are sampling seeds, carried on `master_seed`.
+    return problem.seed if problem.kind == "maze" else None
+
+
+def with_problem_seed(problem: ProblemCfg, seed: int) -> ProblemCfg:
+    if problem.kind != "maze":
+        raise ValueError(
+            f"--problem-seed is meaningless for a {problem.kind!r} problem: it "
+            "is deterministic in its parameters, so the flag would change "
+            "nothing while appearing to vary the instance. Use --seed, which "
+            "drives sampling, instead."
+        )
+    return problem.model_copy(update={"seed": seed})
 
 
 def canonical_json(model: BaseModel) -> str:
