@@ -51,6 +51,7 @@ import itertools
 import numpy as np
 import pytest
 
+from mdpagg.config import InventoryProblem, with_problem_seed
 from mdpagg.inventory import (
     NUM_ACTIONS,
     costs,
@@ -61,10 +62,15 @@ from mdpagg.inventory import (
     transitions,
 )
 from mdpagg.mdp import build
+from mdpagg.norms import max_norm
+from mdpagg.policy import greedy_policy, policy_value
+from mdpagg.solve import build_problem
 from mdpagg.types import INDEX, VALUE
+from mdpagg.vi import value_iteration
 
 N = 3
 Q = 10
+GAMMA = 0.95
 
 # Total fill probability per aggressiveness level. Distinct values so a test
 # cannot pass by reading the wrong action.
@@ -285,3 +291,57 @@ def test_the_study_instance_assembles_at_the_full_size():
     assert m.num_pairs == 9261 * NUM_ACTIONS
     assert m.succ_state.size == 9261 * NUM_ACTIONS * 7
     assert m.cost.dtype == VALUE
+
+
+def test_an_inventory_config_builds_through_the_shared_solver_path():
+    """The wiring 5.4 needs: `solve.py` reaches the generator via `ProblemCfg`,
+    so ground truth is cached and hashed by the same machinery as the maze."""
+    cfg = InventoryProblem(
+        num_assets=2, q_max=3, lam=LAM, rho=0.5, fill=tuple(FILL), spread=tuple(SPREAD)
+    )
+
+    m = build_problem(cfg)
+
+    assert m.num_states == num_states(2, 3)
+    assert m.num_actions(0) == NUM_ACTIONS
+
+
+def test_the_greedy_policy_from_v_star_recovers_v_star():
+    """Validates the entire policy path before it becomes a metric at 5.6.
+
+    `V*` is the fixed point of the Bellman *optimality* operator; evaluating the
+    policy greedy in it must return `V*` itself. That single identity exercises
+    greedy extraction, the evaluator and the sign convention at once, and it is
+    the only place any of them is checked against something independent. If the
+    minimisation were flipped, or `_evaluate_sweep` indexed the wrong pair, the
+    solver would still converge and every number after 5.6 would be wrong with
+    nothing to reveal it.
+
+    The bound is not `tol`. Span-seminorm stopping at `tol` leaves the iterate
+    within about `gamma*tol/(1-gamma)` of the true fixed point, and the greedy
+    policy inherits roughly twice that, so the admissible gap carries a factor
+    of `1/(1-gamma)` -- 20 at gamma=0.95. Asserting against a bare `tol` here
+    would fail on a correct implementation; asserting against a round number
+    like `1e-8` would pass on a badly wrong one.
+    """
+    tol = 1e-12
+    m = make_inventory_mdp(2, 3, FILL, LAM, SIGMA2, SPREAD)
+    v_star = value_iteration(m, GAMMA, tol=tol).v
+
+    recovered = policy_value(m, greedy_policy(m, v_star, GAMMA), GAMMA, tol=tol)
+
+    assert float(max_norm(recovered - v_star)) < 3.0 * tol / (1.0 - GAMMA)
+
+
+def test_a_problem_seed_is_rejected_rather_than_ignored():
+    """`--problem-seed` is meaningful only where the generator is random. The
+    inventory MDP is a pure function of its parameters, so accepting the flag
+    would silently do nothing while looking like it varied the instance. It does
+    not corrupt the cache key -- `model_dump` ignores undeclared fields, checked
+    -- which is exactly why silence here would be hard to notice."""
+    cfg = InventoryProblem(
+        num_assets=2, q_max=3, lam=LAM, rho=0.5, fill=tuple(FILL), spread=tuple(SPREAD)
+    )
+
+    with pytest.raises(ValueError, match="deterministic"):
+        with_problem_seed(cfg, 7)
