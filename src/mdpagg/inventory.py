@@ -100,3 +100,25 @@ def make_inventory_mdp(
 def equicorrelated(num_assets: int, rho: float) -> ValueArray:
     off = np.full((num_assets, num_assets), rho, dtype=VALUE)
     return off + np.eye(num_assets, dtype=VALUE) * (1.0 - rho)
+
+
+def do_nothing_policy(num_assets: int, q_max: int) -> IndexArray:
+    return np.zeros(num_states(num_assets, q_max), dtype=INDEX)
+
+
+def immediate_cost_policy(
+    num_assets: int,
+    q_max: int,
+    fill: ValueArray,
+    lam: float,
+    sigma: ValueArray,
+    spread: ValueArray,
+) -> IndexArray:
+    cost = costs(num_assets, q_max, fill, lam, sigma, spread)
+    return np.argmin(cost.reshape(-1, NUM_ACTIONS), axis=1).astype(INDEX)
+
+
+def linear_hedge_policy(num_assets: int, q_max: int) -> IndexArray:
+    states = np.arange(num_states(num_assets, q_max), dtype=INDEX)
+    exposure = np.abs(decode(states, num_assets, q_max)).max(axis=1)
+    return np.rint((NUM_ACTIONS - 1) * exposure / q_max).astype(INDEX)
