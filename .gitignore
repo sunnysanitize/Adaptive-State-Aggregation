@@ -22,7 +22,6 @@ htmlcov/
 
 
 *.npz
-/results/
 /cache/
 
 .env
@@ -45,3 +44,8 @@ Sessionx.vim
 .idea/
 
 /docs/
+
+!/docs/metrics.md
+!/docs/residual_epsilon_note.md
+
+

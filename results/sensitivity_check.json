@@ -1,0 +1,9 @@
+{
+  "config": "configs/maze_200_sensitivity.json",
+  "target": 2.0,
+  "exact_err_inf": 1.3014442856729147e-09,
+  "adaptive_err_inf": 1.2272024399970434,
+  "adaptive_final_groups": 3752,
+  "groups_clamped": false,
+  "passes": true
+}

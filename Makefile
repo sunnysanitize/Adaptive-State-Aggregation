@@ -5,7 +5,7 @@ PYTEST := $(PY) -m pytest -q -rs
 
 .PHONY: all lint test debug bounds clean-cache
 
-# The Phase 1 gate (1.7). Lint first because it is the cheapest failure, then
+# Lint first because it is the cheapest failure, then
 # the three run modes; `bounds` goes last because it wipes __pycache__ and so
 # pays for a full recompile.
 all: lint test debug bounds
@@ -19,7 +19,7 @@ lint:
 # the extra run.
 
 # Compiled. The mode every number is measured in, and the only mode the
-# bitwise gates (1.3, 3.2) claim anything about.
+# bitwise equality tests claim anything about.
 test:
 	$(PYTEST)
 
@@ -32,7 +32,7 @@ debug:
 #
 # Depends on clean-cache for a measured reason: a kernel cached without
 # boundscheck is reused when boundscheck is on, so a warm cache turns this
-# mode into a no-op that passes. Verified at 1.3 -- the same read returns
+# mode into a no-op that passes. Measured: the same read returns
 # 2.5e-313 with a warm cache and raises IndexError with a cold one.
 bounds: clean-cache
 	NUMBA_BOUNDSCHECK=1 $(PYTEST)

@@ -1,0 +1,315 @@
+{
+  "config": {
+    "problem": {
+      "kind": "maze",
+      "dims": [
+        1000,
+        1000
+      ],
+      "p": 0.92,
+      "seed": 0,
+      "gamma": 0.95,
+      "solve_tol": 1e-10,
+      "target_norm": 100.0
+    },
+    "algorithm": {
+      "iterations": 1000,
+      "epsilon": {
+        "kind": "fixed",
+        "value": 0.5
+      },
+      "schedule": {
+        "global_len": 2,
+        "agg_len": 5
+      },
+      "max_groups": 4096
+    },
+    "trace": {
+      "fine_stride": 1,
+      "coarse_stride": 50
+    },
+    "master_seed": 0
+  },
+  "vary": "both",
+  "eps_grid": [
+    0.5
+  ],
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19
+  ],
+  "rows": [
+    {
+      "eps": 0.5,
+      "seed": 0,
+      "wall_ns": 2755417769,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 1.596412560340326,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286037479,
+      "actual": 572037479,
+      "overhead_fraction": 0.9998689717161156
+    },
+    {
+      "eps": 0.5,
+      "seed": 1,
+      "wall_ns": 2707253702,
+      "err_inf": 1.8478291549357242,
+      "policy_loss": 1.8794646396837464,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286038332,
+      "actual": 572038332,
+      "overhead_fraction": 0.9998659899890621
+    },
+    {
+      "eps": 0.5,
+      "seed": 2,
+      "wall_ns": 2686763724,
+      "err_inf": 1.8478291549357242,
+      "policy_loss": 3.315351756500405,
+      "num_groups": 60,
+      "t_sa": 715,
+      "billed": 286037409,
+      "actual": 572037409,
+      "overhead_fraction": 0.9998692164072847
+    },
+    {
+      "eps": 0.5,
+      "seed": 3,
+      "wall_ns": 2691753261,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 1.9928795395212262,
+      "num_groups": 62,
+      "t_sa": 715,
+      "billed": 286037903,
+      "actual": 572037903,
+      "overhead_fraction": 0.999867489589308
+    },
+    {
+      "eps": 0.5,
+      "seed": 4,
+      "wall_ns": 2684392783,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 2.165736813960919,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286037334,
+      "actual": 572037334,
+      "overhead_fraction": 0.9998694785765273
+    },
+    {
+      "eps": 0.5,
+      "seed": 5,
+      "wall_ns": 2688290818,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 1.999083605969048,
+      "num_groups": 62,
+      "t_sa": 715,
+      "billed": 286038568,
+      "actual": 572038568,
+      "overhead_fraction": 0.999865165036066
+    },
+    {
+      "eps": 0.5,
+      "seed": 6,
+      "wall_ns": 2692564293,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 2.2610349684964177,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286037624,
+      "actual": 572037624,
+      "overhead_fraction": 0.9998684648562176
+    },
+    {
+      "eps": 0.5,
+      "seed": 7,
+      "wall_ns": 2698580665,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 1.7994614125437067,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286037419,
+      "actual": 572037419,
+      "overhead_fraction": 0.999869181451396
+    },
+    {
+      "eps": 0.5,
+      "seed": 8,
+      "wall_ns": 2684480750,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 1.890652918022667,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286037474,
+      "actual": 572037474,
+      "overhead_fraction": 0.9998689891940522
+    },
+    {
+      "eps": 0.5,
+      "seed": 9,
+      "wall_ns": 2693606973,
+      "err_inf": 1.8534149543419245,
+      "policy_loss": 3.320924371100361,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286036973,
+      "actual": 572036973,
+      "overhead_fraction": 0.9998707404864056
+    },
+    {
+      "eps": 0.5,
+      "seed": 10,
+      "wall_ns": 2691424442,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 1.7704543634588674,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286038144,
+      "actual": 572038144,
+      "overhead_fraction": 0.9998666471559821
+    },
+    {
+      "eps": 0.5,
+      "seed": 11,
+      "wall_ns": 2691383952,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 3.1463225951159473,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286037168,
+      "actual": 572037168,
+      "overhead_fraction": 0.9998700588449401
+    },
+    {
+      "eps": 0.5,
+      "seed": 12,
+      "wall_ns": 2693093966,
+      "err_inf": 1.8478291754447218,
+      "policy_loss": 3.517816152365228,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286037613,
+      "actual": 572037613,
+      "overhead_fraction": 0.9998685033076402
+    },
+    {
+      "eps": 0.5,
+      "seed": 13,
+      "wall_ns": 2697823501,
+      "err_inf": 1.8478293214552926,
+      "policy_loss": 3.165190762314097,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286037358,
+      "actual": 572037358,
+      "overhead_fraction": 0.9998693946823547
+    },
+    {
+      "eps": 0.5,
+      "seed": 14,
+      "wall_ns": 2696194370,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 4.927150258924684,
+      "num_groups": 60,
+      "t_sa": 715,
+      "billed": 286036604,
+      "actual": 572036604,
+      "overhead_fraction": 0.9998720303643376
+    },
+    {
+      "eps": 0.5,
+      "seed": 15,
+      "wall_ns": 2696865992,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 2.16845535191419,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286037329,
+      "actual": 572037329,
+      "overhead_fraction": 0.9998694960544817
+    },
+    {
+      "eps": 0.5,
+      "seed": 16,
+      "wall_ns": 2698305997,
+      "err_inf": 1.8478293214696668,
+      "policy_loss": 1.985967164787155,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286037614,
+      "actual": 572037614,
+      "overhead_fraction": 0.9998684998120562
+    },
+    {
+      "eps": 0.5,
+      "seed": 17,
+      "wall_ns": 2705988599,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 2.0020543456325868,
+      "num_groups": 61,
+      "t_sa": 715,
+      "billed": 286037494,
+      "actual": 572037494,
+      "overhead_fraction": 0.9998689192823091
+    },
+    {
+      "eps": 0.5,
+      "seed": 18,
+      "wall_ns": 2695560708,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 2.153949854812197,
+      "num_groups": 62,
+      "t_sa": 715,
+      "billed": 286038219,
+      "actual": 572038219,
+      "overhead_fraction": 0.9998663849882242
+    },
+    {
+      "eps": 0.5,
+      "seed": 19,
+      "wall_ns": 2696314147,
+      "err_inf": 1.8478293214696677,
+      "policy_loss": 2.295847600079398,
+      "num_groups": 62,
+      "t_sa": 715,
+      "billed": 286038068,
+      "actual": 572038068,
+      "overhead_fraction": 0.9998669128194503
+    }
+  ],
+  "summary": [
+    {
+      "eps": 0.5,
+      "n": 20,
+      "err_mean": 1.8481085791579202,
+      "err_stdev": 0.001248991119842531,
+      "err_median": 1.8478293214696677,
+      "err_min": 1.8478291549357242,
+      "err_max": 1.8534149543419245,
+      "policy_loss_mean": 2.4677105517771585,
+      "num_groups_mean": 61.1,
+      "bound": 19.999999999999982
+    }
+  ]
+}

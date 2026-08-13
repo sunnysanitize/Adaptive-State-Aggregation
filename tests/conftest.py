@@ -20,6 +20,6 @@ requires_jit = pytest.mark.skipif(
         "njit-mode claim: exactness holds within one run mode, not across all "
         "three. Numba may contract a multiply-add into a single FMA where "
         "CPython will not, so bit-for-bit equality is asserted under `make "
-        "test` only. See overview 1.3 and the ambiguity log."
+        "test` only. See the ambiguity log."
     ),
 )
