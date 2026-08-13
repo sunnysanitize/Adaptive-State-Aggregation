@@ -54,6 +54,7 @@ class AdaptiveState:
     w: ValueArray
     part: Partition
     t_sa: int = 1
+    cycle: int = 0
     residual_span: float = math.inf
     wall_ns: int = 0
     counters: Counters = field(default_factory=Counters)
@@ -83,11 +84,33 @@ class ResidualSpanEpsilon:
 
 
 @dataclass(frozen=True)
+class GeometricEpsilon:
+
+    eps_0: float
+    eps_min: float
+    cycles: int
+
+    def __post_init__(self) -> None:
+        if self.cycles < 2:
+            raise ValueError(f"cycles must be >= 2, got {self.cycles}")
+        if self.eps_min >= self.eps_0:
+            raise ValueError(
+                f"eps_min must be < eps_0, got eps_min {self.eps_min} and "
+                f"eps_0 {self.eps_0}"
+            )
+
+    def __call__(self, state: AdaptiveState) -> float:
+        decay = (self.eps_min / self.eps_0) ** (state.cycle / (self.cycles - 1))
+        return max(self.eps_min, self.eps_0 * decay)
+
+
+@dataclass(frozen=True)
 class AdaptiveResult:
 
     v: ValueArray
     iterations: int
     t_sa: int
+    cycle: int
     counters: Counters
     wall_ns: int
 
@@ -225,6 +248,7 @@ class _AdaptiveLoop:
         state.counters.rebin_ops += self.num_states
         groups = state.part.num_groups
         state.w[:groups] = state.part.centers[:groups]
+        state.cycle += 1
 
     def aggregate_sweep(self) -> None:
 
@@ -291,4 +315,5 @@ def run_adaptive(
             loop.lift()
 
     return AdaptiveResult(v=state.v, iterations=iterations, t_sa=state.t_sa,
-                          counters=state.counters, wall_ns=state.wall_ns)
+                          cycle=state.cycle, counters=state.counters,
+                          wall_ns=state.wall_ns)
