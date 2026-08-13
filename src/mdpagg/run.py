@@ -15,6 +15,7 @@ from .adaptive import (
     AlternatingSchedule,
     EpsilonPolicy,
     FixedEpsilon,
+    GeometricEpsilon,
     ResidualSpanEpsilon,
     run_adaptive,
 )
@@ -38,6 +39,8 @@ def make_epsilon(cfg: EpsilonCfg) -> EpsilonPolicy:
         return FixedEpsilon(cfg.value)
     if cfg.kind == "residual_span":
         return ResidualSpanEpsilon(cfg.c, cfg.eps_min)
+    if cfg.kind == "geometric":
+        return GeometricEpsilon(cfg.eps_0, cfg.eps_min, cfg.cycles)
 
     raise ValueError(f"unrecognized epsilon kind {cfg.kind!r}")
 
