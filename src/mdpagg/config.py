@@ -56,8 +56,28 @@ class ResidualSpanEpsilonCfg(Frozen):
     eps_min: float = Field(gt=0.0)
 
 
+class GeometricEpsilonCfg(Frozen):
+
+    kind: Literal["geometric"] = "geometric"
+    eps_0: float = Field(gt=0.0)
+    eps_min: float = Field(gt=0.0)
+    # The schedule divides by cycles - 1, and is defined for C >= 2.
+    cycles: int = Field(ge=2)
+
+    @model_validator(mode="after")
+    def _endpoints_are_ordered(self) -> "GeometricEpsilonCfg":
+        if self.eps_min >= self.eps_0:
+            raise ValueError(
+                f"eps_min {self.eps_min} must be below eps_0 {self.eps_0}: the "
+                "schedule is floored at eps_min, so an inverted pair would run "
+                "at a constant eps while reporting itself as a decay arm"
+            )
+        return self
+
+
 EpsilonCfg = Annotated[
-    FixedEpsilonCfg | ResidualSpanEpsilonCfg, Field(discriminator="kind")
+    FixedEpsilonCfg | ResidualSpanEpsilonCfg | GeometricEpsilonCfg,
+    Field(discriminator="kind"),
 ]
 
 
