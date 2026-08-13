@@ -22,6 +22,7 @@ htmlcov/
 
 
 *.npz
+/results/
 /cache/
 
 .env
@@ -43,9 +44,10 @@ Sessionx.vim
 .vscode/
 .idea/
 
-/docs/
-
-!/docs/metrics.md
+# Working notes stay untracked until their implementation is finished.
+# residual_epsilon_note.md carries the preregistration, which is only worth
+# anything if it can be read beside the results it predicted.
+/docs/*
 !/docs/residual_epsilon_note.md
-
+!/docs/metrics.md
 
