@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 
+from mdpagg import trace as trace_module
 from mdpagg.config import (
     EpsilonCfg,
     FixedEpsilonCfg,
@@ -24,11 +25,12 @@ EPS_GRID = (0.05, 0.1, 0.5)
 SEEDS = tuple(range(20))
 
 
+## Frozen before any result existed; see docs/residual_epsilon_note.md.
 RESIDUAL_C = 0.084
-EPS_0 = 0.4985  ## = RESIDUAL_C * span_0, span_0 = 5.93429 and deterministic
+EPS_0 = 0.4985  ## RESIDUAL_C * span_0, span_0 = 5.93429 and deterministic
 EPS_MIN = 0.05
 CYCLES_SLOW = 1429  ## decay spread over every aggregate cycle
-CYCLES_FAST = 14  ## rate-matched to residual's projected floor at cycle 13
+CYCLES_FAST = 14  ## rate-matched to residual's projected floor
 
 ARMS: dict[str, EpsilonCfg] = {
     "fixed_0.05": FixedEpsilonCfg(value=0.05),
@@ -43,9 +45,8 @@ ARMS: dict[str, EpsilonCfg] = {
     ),
 }
 
-## (treatment, control, predicted outcome). Predictions are preregistered; they
-## are carried into the output so a reader sees what was expected beside what
-## happened, rather than having to take the note's word for it afterwards.
+## (treatment, control, predicted outcome). Carried into the output so a
+## reader sees what was expected beside what happened.
 CONTRASTS = (
     ("residual", "fixed_0.05", "null or negative"),
     ("residual", "geometric_slow", "residual wins, on annealing rate not feedback"),
@@ -108,10 +109,8 @@ def tail_mean(doc: dict[str, Any], iterations: int, fraction: float = 0.1) -> fl
 
 
 def err_at_budget(trace: dict[str, Any], budget_ns: float) -> float:
-    ## A step function, deliberately, not an interpolation: the endpoint is the
-    ## error the solver had actually delivered by the budget, not the one it was
-    ## on its way to. NaN when the budget expires before the first traced row,
-    ## which is a real answer -- that arm had produced nothing yet.
+    ## A step function, not an interpolation: the error actually delivered by
+    ## the budget, not the one it was on its way to.
     latest = math.nan
     for wall_ns, err in zip(trace["wall_ns"], trace["err_inf"], strict=True):
         if wall_ns > budget_ns:
@@ -122,8 +121,8 @@ def err_at_budget(trace: dict[str, Any], budget_ns: float) -> float:
 
 
 def clamped_rate(trace: dict[str, Any]) -> float:
-    ## frequent clamping means the run measured the widened eps_effective
-    ## rather than the eps its policy named, which would void the comparison.
+    ## Frequent clamping means the run measured the widened eps_effective
+    ## rather than the eps its policy named, voiding the comparison.
     rows = trace["clamped"]
     return sum(1 for c in rows if c) / len(rows) if rows else 0.0
 
@@ -143,9 +142,8 @@ def median_ci(
 def contrast(
     rows: list[dict[str, Any]], treatment: str, control: str, prediction: str
 ) -> list[dict[str, Any]]:
-    ## Differences are formed per seed and summarized afterwards, per 6.3 -- a
-    ## CI around each arm separately would discard the pairing that makes the
-    ## comparison sensitive.
+    ## Differences are formed per seed: a CI around each arm separately would
+    ## discard the pairing that makes the comparison sensitive.
     by_arm = {
         name: {r["seed"]: r for r in rows if r["arm"] == name}
         for name in (treatment, control)
@@ -176,7 +174,7 @@ def contrast(
                 "mean": statistics.fmean(diffs),
                 "ci_lo": lo,
                 "ci_hi": hi,
-                ## the whole interval inside the region, not merely a point estimate that lands there.
+                ## The whole interval inside the region, not just the point.
                 "within_null_region": abs(lo) < NULL_REGION
                 and abs(hi) < NULL_REGION,
                 "diffs": diffs,
@@ -241,9 +239,8 @@ def summarize(
 def run_arms(
     base: RunCfg, vary: str, args: argparse.Namespace
 ) -> tuple[list[dict[str, Any]], dict[str, Any]] | None:
-    ## Three-arm comparison. Kept separate from the eps-grid path above
-    ## because that path is Gate 3's maze reproduction and must stay runnable
-    ## and unchanged.
+    ## Kept separate from the eps-grid path, which is the maze reproduction
+    ## and must stay unchanged.
     rows: list[dict[str, Any]] = []
     budgets_ns = {str(b): b * 1e6 for b in BUDGETS_MS}
 
@@ -286,6 +283,7 @@ def run_arms(
 
     return rows, {
         "arms": {k: v.model_dump(mode="json") for k, v in ARMS.items()},
+        "environment": trace_module.environment(),
         "budgets_ms": list(BUDGETS_MS),
         "primary_budget_ms": PRIMARY_BUDGET_MS,
         "null_region": NULL_REGION,
@@ -330,8 +328,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--policy-loss-curve", action="store_true")
     ## Preregistered three-arm comparison, as against the eps grid.
     parser.add_argument("--arms", action="store_true")
-    ## The full grid is Gate 3. The paper's 500^2 / 1000^2 comparison is a single
-    ## eps, and running the whole grid there triples the cost for nothing.
+    ## The paper's 500^2 / 1000^2 comparison is a single eps; running the
+    ## whole grid there triples the cost for nothing.
     parser.add_argument("--eps", type=float, nargs="+", default=list(EPS_GRID))
     args = parser.parse_args(argv)
 

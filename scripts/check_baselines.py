@@ -85,7 +85,7 @@ def check(problem: InventoryProblem, root: Path) -> dict[str, Any]:
     }
 
 
-def gate(doc: dict[str, Any]) -> tuple[bool, list[str]]:
+def dominance(doc: dict[str, Any]) -> tuple[bool, list[str]]:
     admissible = 3e-10 / (1.0 - doc["gamma"])
     verdicts = []
     passed = True
@@ -114,15 +114,17 @@ def main() -> int:
 
     problem = load(args.config).problem
     if not isinstance(problem, InventoryProblem):
-        raise SystemExit(f"{args.config} is a {problem.kind!r} problem; Gate 5 is inventory-only")
+        raise SystemExit(
+            f"{args.config} is a {problem.kind!r} problem; this check is inventory-only"
+        )
 
     doc = check(problem, args.root)
-    passed, verdicts = gate(doc)
-    doc["gate_5_passed"] = passed
+    passed, verdicts = dominance(doc)
+    doc["baselines_dominated"] = passed
 
     for line in verdicts:
         print(line)
-    print(f"Gate 5: {'PASS' if passed else 'FAIL'}")
+    print(f"baselines dominated: {'PASS' if passed else 'FAIL'}")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(doc, indent=2))

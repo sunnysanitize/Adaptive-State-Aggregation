@@ -128,7 +128,7 @@ class RunCfg(Frozen):
 def problem_seed(problem: ProblemCfg) -> int | None:
     # None means the generator is deterministic in its parameters, not that a
     # seed was forgotten. The inventory MDP has no problem-level randomness --
-    # its 20 paired seeds at 5.6 are sampling seeds, carried on `master_seed`.
+    # its paired seeds are sampling seeds, carried on `master_seed`.
     return problem.seed if problem.kind == "maze" else None
 
 
