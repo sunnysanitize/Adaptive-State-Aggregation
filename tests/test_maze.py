@@ -1,10 +1,10 @@
-"""Task 1.6: the reproduction benchmark.
+"""The reproduction benchmark.
 
 Two properties, per the plan. Reachability says the instance is *valid* -- a
 maze with a state that cannot reach the goal is not a harder problem, it is a
 different one, with an infinite optimal cost that would quietly poison every
 error number downstream. Seed-determinism is what "fixed seeds" means; without
-it the 20 paired seeds at 3.5 are not paired.
+it the 20 paired seeds in the sweep are not paired.
 
 What is deliberately not tested: row sums and dtypes (the builder's job, and it
 rejects violations at construction), and the unique-path property, which is a
@@ -64,7 +64,7 @@ def test_goal_is_reachable_from_every_state(dims):
 
 @pytest.mark.slow
 def test_goal_is_reachable_at_benchmark_scale():
-    """500x500, the size 3.5 reports against. Slow: the carve is ~6 s."""
+    """500x500, the size the sweep reports against. Slow: the carve is ~6 s."""
     m = make_standard_maze((500, 500), P, SEED)
 
     assert _states_that_reach(m, GOAL).all()

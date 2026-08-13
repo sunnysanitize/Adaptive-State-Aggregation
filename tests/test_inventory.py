@@ -1,4 +1,4 @@
-"""Tasks 5.1 and 5.2: the inventory state space, its dynamics, and the
+"""The inventory state space, its dynamics, and the
 constraint that keeps the formulation well-posed.
 
 The state is a signed inventory vector `(q_1, ..., q_N)`, each `q_i` in
@@ -8,9 +8,9 @@ encoding are worth pinning before anything is built on top.
 **Why a round-trip alone is not enough.** `encode(decode(s)) == s` holds for
 *any* bijection, including one that is consistently off by one and enumerates
 `{-Q+1, ..., Q+1}`. The round-trip would never notice, and the error would
-surface at 5.2 as corner states that clip on one side only. So the second test
+surface as corner states that clip on one side only. So the second test
 checks the grid itself against `itertools.product`, which shares no code with
-the implementation, and pins the row order too: 5.2's clipping arithmetic reads
+the implementation, and pins the row order too: the clipping arithmetic reads
 the layout, so a switch to Fortran order would silently relabel every state.
 
 **The action constraint.** `|A| = 5` quote-aggressiveness levels, the same five
@@ -29,7 +29,7 @@ per-asset levels would read 5, 25, 125 on both.
 **Dynamics (5.2).** One fill per period, so `2N+1` successors per pair: no fill,
 or asset `i` fills on the bid (`+1`) or the ask (`-1`). Fills are exogenous --
 the kernel depends on the action and on clipping, not on the inventory, which
-enters through cost at 5.3.
+enters through cost.
 
 Clipping at `+-Q` is the whole difficulty, because a clipped branch collides
 with the no-fill branch and the two probabilities must add. Collided successors
@@ -104,7 +104,7 @@ LAM = 0.02
 # an increasing FILL: quoting tighter fills more often but earns less each time.
 # Without that, revenue rises monotonically in aggression, the immediate cost
 # gives it no downside, and the optimal policy collapses to "always maximally
-# aggressive" -- measured, not assumed, in the 5.3 parameter audit.
+# aggressive" -- measured, not assumed, in the parameter audit.
 SPREAD = np.array([1.0, 0.8, 0.5, 0.3, 0.15])
 
 SIGMA2 = np.array([[1.0, 0.5], [0.5, 1.0]])
@@ -112,7 +112,7 @@ SIGMA3 = np.full((3, 3), 0.5) + np.eye(3) * 0.5
 
 
 def _mdp(num_assets: int, q_max: int):
-    """Dynamics only -- costs arrive at 5.3, so this builds against zero cost.
+    """Dynamics only -- costs arrive separately, so this builds against zero cost.
     `build()` still validates row sums, which is where a lost-mass clipping bug
     dies without a test of its own."""
     sa_begin, succ_begin, succ_state, succ_prob = transitions(num_assets, q_max, FILL)
@@ -136,7 +136,7 @@ def test_decoding_enumerates_the_signed_inventory_grid():
 def test_indices_stay_int32():
     """`np.ravel_multi_index` returns int64 and every index array downstream is
     INDEX. An int64 that reads correctly here doubles the memory of the N=4
-    instance at 5.6 and nothing else in the toolchain would ever mention it."""
+    larger instance and nothing else in the toolchain would ever mention it."""
     states = np.arange(num_states(N, Q), dtype=INDEX)
 
     assert decode(states, N, Q).dtype == INDEX
@@ -145,7 +145,7 @@ def test_indices_stay_int32():
 
 @pytest.mark.parametrize("num_assets", [1, 2, 3])
 def test_every_state_has_five_actions_whatever_the_number_of_assets(num_assets):
-    """The 5.1 constraint, in the only form that can actually fail. The state
+    """The action-space constraint, in the only form that can actually fail. The state
     count here runs 5, 25, 125 while the action count does not move; a drift to
     per-asset levels would read 5, 25, 125 as well."""
     m = _mdp(num_assets, 2)
@@ -274,7 +274,7 @@ def test_a_pinned_asset_earns_no_spread_on_the_blocked_side():
 def test_the_spread_ladder_leaves_revenue_hump_shaped():
     """Expected revenue per period is `delta_a * f_a`. If that is monotone in
     `a` the immediate cost gives aggression no downside and exact VI collapses
-    to a single-action policy -- measured at the 5.3 audit, where a flat ladder
+    to a single-action policy -- measured in the parameter audit, where a flat ladder
     produced `acts = 1` at every lambda and gamma tried. An interior optimum is
     what makes the action choice a real trade-off, so it is a requirement on the
     frozen constants rather than an accident of them."""
@@ -299,7 +299,7 @@ def test_the_study_instance_assembles_at_the_full_size():
 
 
 def test_an_inventory_config_builds_through_the_shared_solver_path():
-    """The wiring 5.4 needs: `solve.py` reaches the generator via `ProblemCfg`,
+    """The wiring ground truth needs: `solve.py` reaches the generator via `ProblemCfg`,
     so ground truth is cached and hashed by the same machinery as the maze."""
     cfg = InventoryProblem(
         num_assets=2, q_max=3, lam=LAM, rho=0.5, fill=tuple(FILL), spread=tuple(SPREAD)
@@ -312,14 +312,14 @@ def test_an_inventory_config_builds_through_the_shared_solver_path():
 
 
 def test_the_greedy_policy_from_v_star_recovers_v_star():
-    """Validates the entire policy path before it becomes a metric at 5.6.
+    """Validates the entire policy path before it becomes a metric.
 
     `V*` is the fixed point of the Bellman *optimality* operator; evaluating the
     policy greedy in it must return `V*` itself. That single identity exercises
     greedy extraction, the evaluator and the sign convention at once, and it is
     the only place any of them is checked against something independent. If the
     minimisation were flipped, or `_evaluate_sweep` indexed the wrong pair, the
-    solver would still converge and every number after 5.6 would be wrong with
+    solver would still converge and every number downstream would be wrong with
     nothing to reveal it.
 
     The bound is not `tol`. Span-seminorm stopping at `tol` leaves the iterate
@@ -362,7 +362,7 @@ def test_the_sweep_refuses_to_vary_an_inventory_problem_by_seed():
     attaches a `seed` attribute the model never declared, `model_dump` drops it
     again, and the problem hash is unchanged -- 20 arms solving one instance
     while the output reports 20 seeds. Every spread, IQR and confidence interval
-    at 5.6 would be computed over copies, and nothing about the run would look
+    downstream would be computed over copies, and nothing about the run would look
     wrong. `--vary both` is the default, so this is the path taken by anyone who
     does not already know."""
     cfg = load("configs/inventory_n3.json")
@@ -382,7 +382,7 @@ def test_the_sweep_still_varies_the_sampling_stream_for_inventory():
     assert problem_hash(varied.problem) == problem_hash(cfg.problem)
 
 
-# --- 5.5, Gate 5 -------------------------------------------------------------
+# --- policy baselines --------------------------------------------------------
 
 
 def _baselines(num_assets: int, q_max: int) -> dict[str, np.ndarray]:
@@ -416,8 +416,8 @@ def test_the_immediate_cost_policy_picks_one_action_everywhere():
 
 
 def test_the_hedge_quotes_wider_the_more_exposed_the_book_is():
-    """A hedge that collapsed to a constant would still pass Gate 5 -- every
-    constant policy is worse than optimal -- so the gate cannot tell whether
+    """A hedge that collapsed to a constant would still pass dominance -- every
+    constant policy is worse than optimal -- so dominance cannot tell whether
     this baseline is still a hedge. Aggressiveness rises with the most-exposed
     asset, spans the ladder, and is flat only where the book is."""
     inventories = decode(np.arange(num_states(N, Q), dtype=INDEX), N, Q)
@@ -432,18 +432,18 @@ def test_the_hedge_quotes_wider_the_more_exposed_the_book_is():
 
 @pytest.mark.parametrize("name", ["do-nothing", "immediate cost", "linear hedge"])
 def test_no_baseline_beats_the_optimal_policy_anywhere(name):
-    """**Gate 5.** `V*` is the pointwise minimum over policies, so a baseline
+    """`V*` is the pointwise minimum over policies, so a baseline
     scoring below it at even one state is not a surprising result -- it is
     impossible, and means the formulation is wrong rather than good. A flipped
     sign, a maximisation, or a mis-indexed pair in `_evaluate_sweep` all show up
     here and nowhere else; each would leave the solver converging happily and
-    every number after 5.6 wrong with nothing to reveal it.
+    every number downstream wrong with nothing to reveal it.
 
-    Run on the real study instance, not a miniature: the gate is a claim about
-    the `N=3, Q=10` MDP every Project II number is measured on, and the exact
+    Run on the real study instance, not a miniature: the claim is about the
+    `N=3, Q=10` MDP every reported number is measured on, and the exact
     solve plus three evaluations costs well under a second.
 
-    The tolerance is 5.4's, for 5.4's reason -- span-seminorm stopping leaves a
+    The tolerance is the ground-truth check's, for its reason -- span-seminorm stopping leaves a
     gap carrying a factor of `1/(1-gamma)`, so a bare `tol` would fail on
     correct code. The measured margins clear it by nine orders of magnitude, so
     the verdict is decided by the formulation, not by numerics.

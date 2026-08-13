@@ -1,4 +1,4 @@
-"""Task 1.1: the CSR model and its builder.
+"""The CSR model and its builder.
 
 Two of the builder's five checks get tests, because they are the two that fail
 silently: a row that sums to something near-but-not 1, and an index array that

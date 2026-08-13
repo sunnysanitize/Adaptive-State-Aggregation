@@ -94,9 +94,8 @@ def test_residual_config_requires_positive_parameters(field):
         RunCfg.model_validate(doc)
 
 
-## Geometric decay (6.2). The non-adaptive third arm: eps falls on a timetable
-## with no reference to the residual, which is what makes it the control that
-## separates feedback from ordinary annealing.
+## The non-adaptive arm: eps falls on a timetable with no reference to the
+## residual, which is what separates feedback from ordinary annealing.
 
 
 def test_geometric_starts_at_eps_0():
@@ -106,16 +105,16 @@ def test_geometric_starts_at_eps_0():
 
 
 def test_geometric_reaches_the_floor_on_the_last_scheduled_cycle():
-    ## i = C-1 puts the exponent at exactly 1, so this is the endpoint the
-    ## schedule promises rather than something it approaches.
+    ## i = C-1 puts the exponent at exactly 1, so this is an endpoint the
+    ## schedule promises rather than approaches.
     epsilon = GeometricEpsilon(eps_0=0.5, eps_min=0.05, cycles=14)
 
     assert epsilon(state_at_cycle(13)) == pytest.approx(0.05)
 
 
 def test_geometric_holds_the_floor_past_the_schedule():
-    ## A run has more aggregate cycles than C whenever C is set to anneal early,
-    ## which is exactly the rate-matched arm preregistered at 6.1.
+    ## A run has more aggregate cycles than C whenever C anneals early, which
+    ## is exactly the rate-matched arm.
     epsilon = GeometricEpsilon(eps_0=0.5, eps_min=0.05, cycles=14)
 
     assert epsilon(state_at_cycle(14)) == 0.05
@@ -123,8 +122,8 @@ def test_geometric_holds_the_floor_past_the_schedule():
 
 
 def test_geometric_midpoint_is_the_geometric_mean():
-    ## The one assertion that distinguishes geometric decay from linear: with
-    ## three cycles the middle value is sqrt(eps_0 * eps_min), not their average.
+    ## Distinguishes geometric decay from linear: the middle value is
+    ## sqrt(eps_0 * eps_min), not their average.
     epsilon = GeometricEpsilon(eps_0=1.0, eps_min=0.01, cycles=3)
 
     assert epsilon(state_at_cycle(1)) == pytest.approx(0.1)
@@ -138,15 +137,14 @@ def test_geometric_decreases_every_cycle_until_the_floor():
 
 
 def test_geometric_rejects_a_single_cycle():
-    ## C = 1 divides by zero in the exponent. The plan's schedule is defined for
-    ## C >= 2, so this is a construction error rather than a degenerate run.
+    ## C = 1 divides by zero in the exponent.
     with pytest.raises(ValueError, match="cycles"):
         GeometricEpsilon(eps_0=0.5, eps_min=0.05, cycles=1)
 
 
 def test_geometric_rejects_a_floor_above_its_start():
-    ## eps_min >= eps_0 makes max() return the floor at every cycle, so the arm
-    ## would silently become a constant-eps run wearing a schedule's name.
+    ## eps_min >= eps_0 floors every cycle, so the arm would silently become a
+    ## constant-eps run wearing a schedule's name.
     with pytest.raises(ValueError, match="eps_min"):
         GeometricEpsilon(eps_0=0.05, eps_min=0.5, cycles=14)
 
@@ -187,16 +185,12 @@ def test_geometric_config_requires_ordered_endpoints():
         RunCfg.model_validate(doc)
 
 
-## Gate 6. Adding the experimental arms must leave the fixed control untouched.
-## The cycle counter the geometric policy reads lives on AdaptiveState and is
-## incremented on every aggregate entry, including the fixed arm's -- so the
-## claim that the fixed arm is unperturbed is a real one, not a tautology.
-##
-## Values captured from the fixed arm before the counter existed. A change to
-## the loop that shifts the fixed control's trajectory fails here, which is the
-## only place it would be caught before the three-arm comparison is already run.
+## Adding the experimental arms must leave the fixed control untouched. The
+## cycle counter increments on every aggregate entry, including the fixed arm's,
+## so this is a real claim rather than a tautology. Values were captured from
+## the fixed arm before the counter existed.
 
-GATE6_V = (
+FIXED_ARM_V = (
     3.792765015596272,
     3.05532201132702,
     2.3164479027169165,
@@ -218,17 +212,16 @@ def test_fixed_arm_is_unchanged_by_the_experimental_arms():
         FixedEpsilon(0.25), streams(7).sampling, max_groups=16,
     )
 
-    assert [float(x) for x in result.v] == list(GATE6_V)
+    assert [float(x) for x in result.v] == list(FIXED_ARM_V)
     assert result.t_sa == 143
     assert result.counters.billed == 1222
     assert result.counters.actual == 1744
 
 
 def test_the_loop_hands_the_geometric_policy_cycle_zero_first():
-    ## The counter is incremented after the policy is consulted, so the first
-    ## aggregate entry anneals from eps_0. Incrementing before would start the
-    ## arm one cycle in and quietly drop its coarsest partition -- invisible in
-    ## any test that constructs AdaptiveState by hand.
+    ## The counter increments after the policy is consulted, so the first
+    ## aggregate entry anneals from eps_0. Incrementing before would drop the
+    ## coarsest partition -- invisible to any test that builds the state by hand.
     f = tiny_gridworld()
     seen: list[float] = []
 
@@ -249,7 +242,7 @@ def test_the_loop_hands_the_geometric_policy_cycle_zero_first():
 
 
 def test_the_cycle_counter_never_resets():
-    ## Same reasoning as t_sa at 3.1: it lives on AdaptiveState precisely so a
+    ## Same reasoning as t_sa: it lives on AdaptiveState precisely so a
     ## refactor cannot turn it into a per-phase local.
     f = tiny_gridworld()
 

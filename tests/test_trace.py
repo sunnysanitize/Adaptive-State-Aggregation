@@ -1,4 +1,4 @@
-"""Task 3.3: the trace survives a round-trip through JSON.
+"""The trace survives a round-trip through JSON.
 
 Two things here are fragile in ways that are easy to miss until a result file
 is unreadable weeks later.
@@ -144,7 +144,7 @@ def test_bad_strides_are_rejected():
 
 
 def test_an_explicit_checkpoint_set_replaces_the_coarse_stride():
-    """5.6 scores the policy at named iterations rather than every 50th row.
+    """The sweep scores the policy at named iterations rather than every 50th row.
 
     Scoring runs `policy_value` to 1e-10 -- about 450 sweeps, 20 ms -- so at a
     10,000-iteration horizon the default stride would score 200 times, wrapping

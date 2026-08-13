@@ -1,4 +1,4 @@
-"""Task 1.5: the Bellman operator is a gamma-contraction in the sup norm.
+"""The Bellman operator is a gamma-contraction in the sup norm.
 
     ||TV - TW||inf <= gamma * ||V - W||inf
 

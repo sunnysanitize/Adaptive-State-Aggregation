@@ -1,6 +1,6 @@
-"""Task 1.4: exact value iteration against the two hand-computed fixtures.
+"""Exact value iteration against the two hand-computed fixtures.
 
-This is the anchor Gate 2 pins the adaptive layer *to*. If these numbers are
+This is the anchor `test_adaptive` pins the adaptive layer *to*. If these numbers are
 wrong, `agg_len = 0` reproducing them bit for bit means only that both are
 wrong in the same way.
 
@@ -15,7 +15,7 @@ forever, which removes the constant freedom. Both fixtures are needed, and only
 one of them is load-bearing here.
 
 Span is the correct rule for average-cost relative VI, where `h` is defined only
-up to a constant. It lives on in `norms.py` for 5.2.
+up to a constant. It lives on in `norms.py`.
 """
 
 import numpy as np
@@ -45,7 +45,7 @@ def test_error_obeys_the_a_posteriori_bound(make):
     The guarantee sup-norm stopping buys and span stopping does not. Asserting
     it, rather than just "close enough", is what makes `tol` a knob with a
     meaning: it says how far from V* the answer may be, up to the horizon
-    factor. 3.3 picks its 1e-10 ground-truth tolerance on exactly this basis.
+    factor. `solve.py` picks its 1e-10 ground-truth tolerance on this basis.
     """
     f = make()
 
@@ -71,7 +71,7 @@ def test_terminates_in_a_sane_number_of_iterations(make):
 
 @pytest.mark.parametrize("make", ALL_FIXTURES, ids=lambda f: f.__name__)
 def test_bills_one_backup_per_state_per_sweep(make):
-    """The backup count 4.6's accounting figure is a share *of*.
+    """The backup count the overhead figure is a share *of*.
 
     A sweep is |S| backups by construction, so this pins the counter to the
     work done rather than to a number someone incremented by hand.

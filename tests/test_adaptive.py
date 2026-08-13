@@ -1,4 +1,4 @@
-"""Task 3.2, Gate 2: with no aggregate phase, Algorithm 3 *is* value iteration.
+"""With no aggregate phase, Algorithm 3 *is* value iteration.
 
 Set `|Ai| = 0` and every branch that makes the adaptive layer adaptive is
 switched off: no rebinning, no sampling, no lifting, no step size. What is left
@@ -10,21 +10,21 @@ same order.
 Hence plain `==`. An approximate match would mean the loop has picked up an
 extra arithmetic step somewhere -- a stale buffer, a swap in the wrong place, a
 sweep that reads `V` while writing it -- and every result downstream of here
-would inherit it. This is a hard gate: if it fails, bisect against the Phase 1
-anchors rather than loosening the comparison.
+would inherit it. If this fails, bisect against the hand-computed anchors
+rather than loosening the comparison.
 
-Same mode-scoping as Gate 1. Numba may contract a multiply-add into a single
+Same mode-scoping as `test_backup`. Numba may contract a multiply-add into a single
 FMA where CPython will not, so the exactness claim is scoped to `make test` and
-the gate skips itself under `make debug` with the reason printed.
+this skips itself under `make debug` with the reason printed.
 
 Two references, deliberately. Repeated `bellman` supplies the per-iterate
 sequence, which `value_iteration` does not expose -- it returns only its final
 vector. `value_iteration` itself is then pinned on that final vector, so the
-gate holds against the real function and not only against a stand-in built from
-the same parts.
+claim holds against the real function and not only against a stand-in built
+from the same parts.
 
 The schedule assertion lives here rather than beside the loop because it is the
-premise the gate rests on: if `phase_at` said AGGREGATE anywhere under
+premise this rests on: if `phase_at` said AGGREGATE anywhere under
 `agg_len = 0`, the comparison would be vacuous rather than failing.
 """
 
@@ -117,7 +117,7 @@ def test_t_sa_counts_aggregate_iterations_and_never_resets():
     the run would keep discarding what it had learned and the error curve would
     flatten early -- a plausible-looking figure with nothing wrong on its face.
     It lives on `AdaptiveState` precisely so a refactor cannot lose it in a
-    loop variable, and every mutation that resets it survives the gate above.
+    loop variable, and every mutation that resets it survives the test above.
     """
     name, mdp, gamma = MODELS[-1]
     seen = []

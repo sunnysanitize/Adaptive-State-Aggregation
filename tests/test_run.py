@@ -119,13 +119,13 @@ def test_checkpoints_on_the_stride_and_inside_the_horizon_are_accepted():
 
 
 def test_the_scorer_reuses_its_answer_when_the_greedy_policy_is_unchanged(monkeypatch):
-    """5.6's warm-start, in the one form that cannot move a number.
+    """The scorer's warm-start, in the one form that cannot move a number.
 
     Warm-starting `policy_value` from the previous iterate is the obvious
     reading and the wrong one: span-based stopping leaves the returned vector
     dependent on where the iteration began, so `policy_loss` would become a
     function of the checkpoint schedule. The shift is about tol/(1-gamma), some
-    2e-9, invisible in any reported digit -- but 6.2 asks whether the fixed
+    2e-9, invisible in any reported digit -- but the control arm requires the fixed
     arm's traces are unchanged, and a control whose numbers move when the
     measurement schedule moves is not a control.
 

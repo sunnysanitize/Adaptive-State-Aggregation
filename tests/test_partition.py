@@ -1,4 +1,4 @@
-"""Task 2.2: the invariant Algorithm 2 exists to make true.
+"""The invariant Algorithm 2 exists to make true.
 
     |v[s] - centers[group_of[s]]| <= eps   for every s
 

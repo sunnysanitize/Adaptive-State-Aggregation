@@ -1,4 +1,4 @@
-"""Task 1.3, Gate 1: the two specializations agree bitwise.
+"""The two specializations agree bitwise.
 
 Under the identity partition -- one group per state, `w = v` -- the lifted
 lookup `w[group_of[s']]` reads the same slot as the direct lookup `v[s']`. Same
@@ -8,7 +8,7 @@ return the *same float*, not a nearby one.
 Hence plain `==`, not `pytest.approx`. Approximate agreement would mean the
 specializations have drifted apart somewhere, and the whole design -- one
 template, two inlined lookups, one backup in the codebase -- rests on their not
-having. Gate 2 pins the adaptive layer to VI bit for bit, which is only
+having. `test_adaptive` pins the adaptive layer to VI bit for bit, which is only
 reachable because both call this same kernel.
 """
 
@@ -60,9 +60,9 @@ def test_lifted_reads_values_through_the_partition(make):
 
     `group_of[s] == s` there, so a lifted lookup that ignored `group_of`
     entirely and read `values[s]` would pass the test above on every state.
-    That is the single property distinguishing the lifted kernel, and Gate 2
+    That is the single property distinguishing the lifted kernel, and the
     would not catch it either -- with `agg_len = 0` the aggregate phase never
-    runs. It would surface at 3.4 as "aggregation is broken", a long way from
+    runs. It would surface later as "aggregation is broken", a long way from
     its cause.
 
     So: collapse every state into one group. Successor values are then all
