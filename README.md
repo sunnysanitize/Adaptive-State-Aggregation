@@ -1,147 +1,178 @@
 # Residual-Driven State Aggregation for Multi-Asset Inventory Control
 
-Does adapting the aggregation width to the Bellman residual beat simply shrinking
-it on a schedule?
+This repository asks whether state aggregation works better when its resolution
+responds to the Bellman residual. More specifically, it tests whether a solver
+benefits from watching the residual as it refines its state groups, or whether a
+fixed refinement schedule works just as well.
 
-**No — not on this problem.** Over 120 paired runs, a residual-driven rule and a
-two-line geometric schedule with no feedback at all converge to the same answer,
-differing by `2.9e-06` on a scale where `‖V*‖∞ = 100`. Whatever the residual rule
-buys comes from *how fast* it anneals, not from watching the residual.
+On the inventory-control problem studied here, the answer is no. Once the solver
+has converged, the residual-driven rule and a rate-matched geometric schedule
+produce effectively the same result. Their final paired difference is
+`-2.9e-06` on a scale where `||V*||inf = 100`. The practical conclusion is that
+the benefit comes from how quickly the aggregation width shrinks, not from using
+the residual as feedback.
 
-This repository is the preregistered experiment behind that null result, built on
-the verified numerical core tagged `shared-core-v1` (`0dce46b`).
+This is a deliberately narrow conclusion from a preregistered experiment. The
+study covers one multi-asset inventory problem, one solver schedule, and 20
+paired seeds. It also includes a preregistered timing endpoint that turned out
+to be poorly chosen. The full record, including that mistake and its effect on
+the interpretation, is in
+[`docs/residual_epsilon_note.md`](docs/residual_epsilon_note.md).
 
----
+## What the study tests
 
-## The rule under test
+Adaptive state aggregation alternates full Bellman sweeps over every state with
+cheaper sweeps over groups of states that have similar values. The aggregation
+width, written here as `epsilon`, controls how coarse those groups are. A larger
+width produces fewer groups and cheaper updates, but it loses precision. A
+smaller width produces more precise groups at a higher computational cost.
 
-Adaptive state aggregation solves a discounted tabular MDP by alternating full
-Bellman sweeps with cheap sweeps over groups of states binned by value. The bin
-width `ε` sets the trade-off: coarse groups are cheap and inaccurate, fine groups
-are expensive and accurate. The standard algorithm fixes `ε` up front.
+The residual-driven method updates the width at the beginning of each aggregate
+phase according to this rule:
 
-The proposed modification makes it adaptive, re-evaluated when each aggregate
-phase begins:
-
+```text
+epsilon = max(epsilon_min, c * span(TV - V))
 ```
-ε ← max(ε_min, c · span(TV − V))
-```
 
-The intuition: while the Bellman residual is large the value estimate is crude,
-so fine groups are wasted precision; as the residual contracts, refine. It is a
-feedback rule, and the question is whether the feedback earns its place.
+The intuition is straightforward. When the Bellman residual is large, the value
+estimate is still crude, so fine groups may be unnecessary. As the residual
+contracts, the method gradually creates finer groups. The experiment tests
+whether that feedback is actually useful.
 
-## Why it doesn't
+## How the comparison works
 
-Three arms, identical in every respect but `ε`, on the same 20 sampling seeds:
+Every run uses the same MDP, sampling seeds, sweep schedule, iteration count,
+trace schedule, and group limit. Only the rule for `epsilon` changes. The fixed
+baseline holds `epsilon` at `0.05`, `0.1`, or `0.5`. The residual configuration
+uses the feedback rule above. Two geometric configurations shrink `epsilon` on
+a preset timetable without reading the residual.
 
-| arm | `ε` rule |
-|:--|:--|
-| **fixed** | constant, at each of `{0.05, 0.1, 0.5}` |
-| **residual** | `max(ε_min, c · span(TV − V))` |
-| **geometric** | a preset decay from `ε₀` to `ε_min`, ignoring the residual |
+The fast geometric configuration is the most important control. It starts and
+finishes at the same widths as the residual rule and refines at approximately
+the same rate. The only meaningful difference is that one configuration reads
+the Bellman residual while the other follows a schedule. This separates the
+effect of feedback from the more ordinary benefit of annealing.
 
-The geometric arm is the one that matters. Residual-`ε` does two things at once —
-it shrinks `ε` over time, *and* it shrinks it in response to the residual.
-Comparing against fixed `ε` alone cannot separate them. So the geometric arm was
-run twice: once on the schedule the plan specified, and once **rate-matched** to
-anneal at the same speed the residual rule was projected to, leaving feedback as
-the only remaining difference.
+The slow geometric configuration follows the literal schedule in the original
+plan and spreads its decay over all 1,429 aggregate cycles. It is useful for
+showing why matching the annealing rate matters, but it is not the main test of
+the feedback hypothesis. Altogether, the experiment contains six configurations
+across 20 paired seeds, for 120 runs.
 
-Median `err_inf` over 20 seeds, by wall-clock budget:
+## Results
 
-| arm | 20 ms | 50 ms | 100 ms | 400 ms | final |
+The table below reports median infinity-norm error over the 20 seeds for the
+three configurations that form the central comparison.
+
+| Configuration | 20 ms | 50 ms | 100 ms | 400 ms | Final |
 |:--|--:|--:|--:|--:|--:|
-| fixed, `ε = 0.05` | 0.7802 | 0.1342 | 0.1479 | 0.1403 | 0.1379 |
-| residual | 0.6314 | 0.1344 | 0.1486 | 0.1407 | 0.1388 |
-| geometric, rate-matched | 0.6762 | 0.1344 | 0.1486 | 0.1405 | 0.1388 |
+| Fixed, `epsilon = 0.05` | 0.7802 | 0.1342 | 0.1479 | 0.1403 | 0.1379 |
+| Residual | 0.6314 | 0.1344 | 0.1486 | 0.1407 | 0.1388 |
+| Geometric fast | 0.6762 | 0.1344 | 0.1486 | 0.1405 | 0.1388 |
 
-From 50 ms onward — about 6% of a full run — the three agree to three or four
-significant figures. The paired difference between residual and the rate-matched
-geometric arm at the final iterate is **−2.9e-06**, with a bootstrap CI that
-comfortably contains zero.
+From 50 ms onward, the three configurations agree to three or four significant
+figures. At the final iterate, the median paired difference between the residual
+and fast geometric configurations is `-2.9e-06`, with a 95 percent bootstrap
+confidence interval of `[-4.116e-04, 2.127e-07]`. That interval is entirely
+inside the preregistered null region of `+/-0.02`.
 
-Two things the experiment found that were not predicted, and one mistake in it,
-are written up in [`docs/residual_epsilon_note.md`](docs/residual_epsilon_note.md) —
-including a preregistered endpoint that turned out to be badly chosen, and why
-that is reported rather than quietly replaced.
+The preregistration selected 20 ms as the primary endpoint, but that endpoint
+falls in the steep part of the solver's descent rather than near its final error
+floor. Small timing changes therefore select noticeably different iterates.
+Even repeated runs on the same machine changed the reported confidence interval
+at that budget. The residual-versus-geometric comparison was indeterminate at
+20 ms, while every comparison from 50 ms onward and the deterministic final
+iterate were null.
 
-## The problem
+The 20 ms result remains in the repository because it was preregistered. It has
+not been silently replaced with a more favorable endpoint. The conclusion is
+instead based on the stable portion of the experiment, where observing
+`span(TV - V)` adds no measurable value over a matched timetable.
 
-Multi-asset market-making inventory control, chosen because its value function is
-*not* saturated — unlike the standard maze benchmark, where most states share a
-value and aggregation looks good for the wrong reason.
+## The inventory problem
 
-| | |
-|:--|:--|
-| State | signed inventory `(q₁, …, q_N)`, each `q_i ∈ {−Q, …, Q}` |
-| Size | `N = 3`, `Q = 10` → `21³ = 9,261` states |
-| Actions | **5 quote-aggressiveness levels, independent of `N`** |
-| Dynamics | one fill per period, `2N + 1` successors, clipped at `±Q` |
-| Cost | `λ · qᵀΣq` risk penalty, minus spread captured on fills |
-| Discount | `γ = 0.95`, costs rescaled so `‖V*‖∞ = 100` |
+The benchmark is a discounted multi-asset market-making inventory MDP. A state
+is a signed inventory vector `(q1, ..., qN)`, with each position bounded between
+`-Q` and `Q`. The primary instance uses three assets and `Q = 10`, which produces
+`21^3 = 9,261` states. Each state has five quote-aggressiveness actions, and one
+period has `2N + 1` possible successors representing no fill or a fill on either
+side of one asset.
 
-The fixed action space is the load-bearing design choice: per-asset levels would
-give `5^N` actions, growing as fast as the state space, and aggregation — which
-compresses *states* — would buy nothing. The formulation, its frozen constants
-and the evidence that correlation actually matters are in
-[`docs/inventory_design.md`](docs/inventory_design.md).
+The cost combines an inventory-risk penalty, `lambda * q^T Sigma q`, with the
+spread captured from fills. The discount is `gamma = 0.95`, and costs are scaled
+so that `||V*||inf = 100`. The covariance matrix is non-diagonal, which makes
+the value of an inventory depend on how positions across assets are correlated.
 
-## What makes the comparison trustworthy
+The five-action space stays fixed as the number of assets grows. This is an
+important part of the design. Giving every asset five independent action levels
+would make the action count grow as `5^N`, limiting the usefulness of compressing
+the state space. The complete formulation, frozen constants, and validation
+evidence are in [`docs/inventory_design.md`](docs/inventory_design.md).
 
-The result is a null, so the machinery that would have detected a real effect has
-to be shown working:
+## Reproducing the study
 
-- **Exact ground truth.** `V*` solved to `1e-10` and cached; a run measured
-  against a `V*` from a different problem fails loudly rather than looking
-  plausible.
-- **The policy path is validated end to end.**
-  `‖policy_value(greedy(V*)) − V*‖∞ = 1.7e-09`, inside the `3·tol/(1−γ)` the
-  span-seminorm stopping rule allows.
-- **Three policy baselines are all strictly worse than optimal** — pointwise, not
-  just on average. A baseline beating `V*` would mean the sign convention,
-  dynamics or evaluator was wrong.
-- **The fixed arm is bit-identical** before and after the experimental arms were
-  added, so the control is uncontaminated.
-- **The baseline resolves what it measures.** Seed spread is 27–180× smaller than
-  the gap between adjacent `ε`, so the experiment could have seen an effect a
-  fraction of that size.
-- **Constants were frozen before any result existed**, with the reasoning
-  recorded — including a stability bound on `c` found by measurement.
-
-## Reproduce
-
-Python 3.11 or newer.
+The project requires Python 3.11 or newer and a Unix-like shell. Create a virtual
+environment and install the development and plotting dependencies with:
 
 ```bash
 python -m venv .venv
 .venv/bin/python -m pip install -e '.[dev,plots]'
-make all                              # lint, 3 run modes, 108 tests
-scripts/reproduce_residual_epsilon.sh # ground truth, baselines, the experiment
 ```
 
-`make all` runs linting, type checking, compiled tests, pure-Python tests, and a
-cold bounds-checked Numba run. Two exactness gates are compiled-mode claims and
-skip themselves under `make debug`, printing the reason.
+Run the full validation suite with:
 
-The experiment takes a few minutes and writes to `results/`. Wall-clock budget
-columns are machine-dependent and will differ from the published table; the
-final-iterate column is deterministic given the seeds and will not.
+```bash
+make all
+```
 
-## Layout
+This command runs linting, type checking, compiled tests, pure-Python tests, and
+a cold bounds-checked Numba run. Two exactness checks apply only to compiled
+mode and explain why they are skipped in debug mode.
 
-| Path | |
-|:--|:--|
-| `src/mdpagg/` | solver core — MDP, VI, partitioning, adaptive loop, ε policies |
-| `configs/inventory_n3.json` | the frozen instance |
-| `scripts/sweep.py --arms` | the three-arm paired experiment |
-| `docs/residual_epsilon_note.md` | preregistration, results, limitations |
-| `docs/inventory_design.md` | MDP formulation and validation |
-| `docs/metrics.md` | every measured number, terse |
+To reproduce the ground truth, policy baselines, and arm comparison, run:
 
-## Provenance
+```bash
+scripts/reproduce_residual_epsilon.sh
+```
 
-Built on `shared-core-v1` (`0dce46b`), a verified numerical core shared with a
-separate study on parallel value iteration. The solver, maze benchmark and
-correctness gates are shared engineering; the inventory MDP, the ε policies, the
-preregistration and every result here are this project's.
+The experiment takes a few minutes and writes its output to `results/`. The main
+comparison is stored in `results/arms_inventory_n3.json`, while
+`results/arms_inventory_n3_curves.json` includes the per-iteration traces. The
+fixed-width reference is stored in `results/inventory_fixed_eps.json`, and the
+policy baselines are stored in `results/inventory_baselines.json`.
+
+Wall-clock columns depend on the machine and may differ from the values reported
+above. Final-iterate results are deterministic for the configured seeds.
+
+## Code and documentation
+
+The solver implementation lives in `src/mdpagg/`, which contains the MDP
+representation, value-iteration routines, state partitioning, and adaptive
+solver. The frozen primary configuration is
+`configs/inventory_n3.json`. Experiment orchestration lives in
+`scripts/sweep.py`, and the end-to-end reproduction command is collected in
+`scripts/reproduce_residual_epsilon.sh`.
+
+The `tests/` directory contains the numerical, behavioral, and regression
+checks. [`docs/residual_epsilon_note.md`](docs/residual_epsilon_note.md) contains
+the preregistration, complete results, limitations, and conclusions.
+[`docs/inventory_design.md`](docs/inventory_design.md) explains the benchmark
+design, while [`docs/metrics.md`](docs/metrics.md) defines the recorded metrics.
+
+## Validation and provenance
+
+The exact value function is solved to `1e-10` and tied to the correct problem
+instance. The greedy policy evaluator is checked end to end, three policy
+baselines are verified to be pointwise worse than optimal, and the fixed control
+reproduces bit for bit after the experimental configurations are added. Seed
+variation is smaller than the gaps between adjacent fixed aggregation widths,
+which shows that the experiment had enough resolution to detect a meaningful
+difference. The experimental constants were also frozen before any
+residual-configuration result was generated.
+
+The project builds on the verified numerical core tagged `shared-core-v1`
+(`0dce46b`). The solver, maze benchmark, and correctness checks are shared
+engineering. The inventory MDP, epsilon policies, preregistration, and results
+belong to this study.
+
+The repository is released under the [MIT License](LICENSE).
